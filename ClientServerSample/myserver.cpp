@@ -207,6 +207,7 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
+      
       printf("Message received: %s\n", buffer); // ignore error
 
       if (send(*current_socket, "OK", 3, 0) == -1)
