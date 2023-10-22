@@ -210,11 +210,22 @@ void *clientCommunication(void *data)
       
       printf("Message received: %s\n", buffer); // ignore error
 
+      
+if (strcmp(buffer, "L") == 0) {
+    // Sample implementation for the 'L' command
+    char messages[] = "These are the stored messages for the user...\r\n"; // This is just a placeholder. Replace with actual logic.
+    if (send(*current_socket, messages, strlen(messages), 0) == -1) {
+        perror("send answer failed");
+        return NULL;
+    }
+}
+else {
       if (send(*current_socket, "OK", 3, 0) == -1)
       {
          perror("send answer failed");
          return NULL;
       }
+}
    } while (strcmp(buffer, "quit") != 0 && !abortRequested);
 
    // closes/frees the descriptor if not already
@@ -233,6 +244,7 @@ void *clientCommunication(void *data)
 
    return NULL;
 }
+
 
 void signalHandler(int sig)
 {

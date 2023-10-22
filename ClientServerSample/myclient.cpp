@@ -40,10 +40,9 @@ int main(int argc, char **argv)
    Sender sender;
    int create_socket;
    char buffer[BUF];
-   char expression[BUF];
    struct sockaddr_in address;
    int size;
-   int isQuit;
+    int isQuit = 0;
    std::string messagesDirectory = "messages";
 
    ////////////////////////////////////////////////////////////////////////////
@@ -109,8 +108,12 @@ int main(int argc, char **argv)
       printf("%s", buffer); // ignore error
    }
 
+
+char expression[BUF] = {0};
    do
    {
+       
+     
          // SEND DATA
          // https://man7.org/linux/man-pages/man2/send.2.html
          // send will fail if connection is closed, but does not set
@@ -190,97 +193,83 @@ if (fgets(buffer, BUF, stdin) != NULL)
       printf(">> If you want to remove a specific message, type 'D'\n");
       printf(">> If you want to logout the client, type 'Q'\n");
 
-      std::cin.getline(buffer, BUF); // Liest eine Zeile ein, inklusive Leerzeichen
+      std::cin.getline(expression, BUF); // Liest eine Zeile ein, inklusive Leerzeichen
       // Erstelle einen Dateinamen für den Benutzer
    
       std::ofstream outputFile;
 
-    if (buffer[0] == 's' || buffer[0] == 'S') {
-   // Überprüfe, ob das Verzeichnis "messages" existiert, und erstelle es, falls es nicht existiert
-    struct stat st;
-    if (stat(messagesDirectory.c_str(), &st) != 0) {
-        mkdir(messagesDirectory.c_str(), 0777); // Erstelle das Verzeichnis "messages"
-    }
 
     std::string line;
-    
+   
+
+   if (expression[0] == 's' || expression[0] == 'S') {
+    struct stat st;
+    if (stat(messagesDirectory.c_str(), &st) != 0) {
+        mkdir(messagesDirectory.c_str(), 0777);
+    }
+
     std::cout << "Bitte geben Sie den Benutzernamen ein: ";
     std::cin.getline(sender.name, BUF);
-    
-    // Erstelle einen Dateinamen für den Benutzer
+
     std::string userFilename = messagesDirectory + "/" + sender.name + "_messages.txt";
-    
-    std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
-    
+    outputFile.open(userFilename, std::ios::app);
 
-        std::cout << "SEND\n";
-        std::cout << ">>Receiver: ";
-        std::cin.getline(sender.receiver, BUF);
-        std::cout << ">>Subject: ";
-        std::cin.getline(sender.subject, 81);
-        std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
+    std::cout << "SEND\n";
+    std::cout << ">>Receiver: ";
+    std::cin.getline(sender.receiver, BUF);
+    std::cout << ">>Subject: ";
+    std::cin.getline(sender.subject, 81);
+    std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
 
-        while (std::getline(std::cin, line)) {
-            if (line == ".") {
-                break;
-            }
-            sender.message += line + '\n';
-        }
-
-        // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
-        sender.messageNum++;
-        outputFile << "Message Number: " << sender.messageNum << '\n';
-
-        // Schreibe die Benutzereingaben in die Datei
-        outputFile << "Receiver: " << sender.receiver << '\n';
-        outputFile << "Subject: " << sender.subject << '\n';
-        outputFile << "Message:\n" << sender.message;
+    while (std::getline(std::cin, line)) {
+       if (line == ".") {
+          break;
+       }
+       sender.message += line + '\n';
     }
-    
+
+    sender.messageNum++;
+    outputFile << "Message Number: " << sender.messageNum << '\n';
+    outputFile << "Receiver: " << sender.receiver << '\n';
+    outputFile << "Subject: " << sender.subject << '\n';
+    outputFile << "Message:\n" << sender.message;
+
     outputFile.close();
-    if (expression[0] == 'q' || expression[0] == 'Q'){
-       isQuit = 0;
+}
+else if (expression[0] == 'l' || expression[0] == 'L') {
+    // TODO: Add code to list all messages received by a specific user
+    std::cout << "Please enter the username: ";
+    std::cin.getline(sender.name, BUF);
+    std::string userFilename = messagesDirectory + "/" + sender.name + "_messages.txt";
+
+    std::ifstream inputFile(userFilename);
+    if (!inputFile) {
+       std::cout << "No messages for user: " << sender.name << std::endl;
     }
+    else {
+       std::cout << "Messages for user: " << sender.name << std::endl;
+       std::cout << "-----------------------------------\n";
+          
+       while (std::getline(inputFile, line)) {
+          std::cout << line << std::endl;
+       }
 
-
-/*
-    switch (expression[0]) {
-    case 's':
-    case 'S':
-            std::cout << "SEND\n";
-            std::cout << ">>Sender: ";
-            std::cin.getline(sender.name, BUF);
-            std::cout << ">>Receiver: ";
-            std::cin.getline(sender.receiver, BUF);
-            std::cout << ">>Subject: ";
-            std::cin.getline(sender.subject, 81);
-            std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
-            
-           
-            while (std::getline(std::cin, line)) {
-                if (line == ".") {
-                    break;
-                }
-                sender.message += line + '\n';
-            }
-
-            // Schreibe die Benutzereingaben in die Datei
-            outputFile << "Sender: " << sender.name << '\n';
-            outputFile << "Receiver: " << sender.receiver << '\n';
-            outputFile << "Subject: " << sender.subject << '\n';
-            outputFile << "Message:\n" << sender.message;
-
-            break;
-
-    case 'l':
-    case 'L':
-        */
-
-
-         
+       inputFile.close();
+    }
+}
+else if (expression[0] == 'q' || expression[0] == 'Q') {
+    isQuit = 0;
+}
          //////////////////////////////////////////////////////////////////////
    
-   } while (strcmp(buffer, "quit") != 0 &&!isQuit);
+   } while (strcmp(expression, "quit") != 0 &&!isQuit);
+
+
+
+
+
+
+         ////////////////////////////////////////////////////////////////////
 
    ////////////////////////////////////////////////////////////////////////////
    // CLOSES THE DESCRIPTOR
