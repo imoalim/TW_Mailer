@@ -20,9 +20,9 @@
 /*void userInput(char input[], int isQuit){  
    
 }*/
-struct Sender
+struct Send
 {
-  char name[BUF];
+  char sender[BUF];
   char receiver[BUF];
   char subject[81];
   int messageNum = 0;
@@ -30,20 +30,19 @@ struct Sender
 };
 
 struct List{
-   Sender sender;   
+   Send send;   
 };
 
 
 int main(int argc, char **argv)
 {
    List list;
-   Sender sender;
+   Send send_;
    int create_socket;
    char buffer[BUF];
-   char expression[BUF];
    struct sockaddr_in address;
    int size;
-   int isQuit;
+   int isQuit = 1;
    std::string messagesDirectory = "messages";
 
    ////////////////////////////////////////////////////////////////////////////
@@ -183,104 +182,142 @@ if (fgets(buffer, BUF, stdin) != NULL)
       }     
         break;
         */
+      // std::cin.getline(buffer, BUF - 1);
 
-      printf(">> If you want to SEND a message, type 'S'\n");
-      printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'L'\n");
-      printf(">> If you want to READ a specific message of a specific user, type 'R'\n");
-      printf(">> If you want to remove a specific message, type 'D'\n");
-      printf(">> If you want to logout the client, type 'Q'\n");
+      printf(">> If you want to SEND a message, type 'Send'\n");
+      printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
+      printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
+      printf(">> If you want to remove a specific message, type 'Delete'\n");
+      printf(">> If you want to logout the client, type 'Quit'\n");
+if (fgets(buffer, BUF, stdin) != NULL)
+      {
+         
+         int size = strlen(buffer);
 
-      std::cin.getline(buffer, BUF); // Liest eine Zeile ein, inklusive Leerzeichen
+// Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
+        if (size >= 2 && (buffer[size - 1] == '\n' || buffer[size - 1] == '\r')) {
+            buffer[size - 1] =  '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
+        }
+     
+     // printf("BUFFER: %s\n", buffer);
       // Erstelle einen Dateinamen für den Benutzer
-   
+       
       std::ofstream outputFile;
+     // printf("BUFFER: %s\n", buffer);
+      /*Hier ist der Ablauf im Client:
 
-    if (buffer[0] == 's' || buffer[0] == 'S') {
-   // Überprüfe, ob das Verzeichnis "messages" existiert, und erstelle es, falls es nicht existiert
-    struct stat st;
-    if (stat(messagesDirectory.c_str(), &st) != 0) {
-        mkdir(messagesDirectory.c_str(), 0777); // Erstelle das Verzeichnis "messages"
-    }
+Der Client sendet den "Send"-Befehl an den Server.
+Der Client wartet auf die Bestätigung vom Server.
+Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "OK" oder "FAIL" handelt.
+Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
+if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
+    // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
+    if (send(create_socket, "OK", 3, 0) == -1) {
+        send(create_socket, "FAIL", 5, 0);
+        perror("Fehler beim Senden der Bestätigung an den Client");
+    } else {
+        printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+// Hier können Sie die Verarbeitung der Nachricht einfügen
+        // Überprüfen und Öffnen der Ausgabedatei
+        struct stat st;
+        if (stat(messagesDirectory.c_str(), &st) != 0) {
+            mkdir(messagesDirectory.c_str(), 0777);
+        }
+        std::ofstream outputFile;
+        std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+        outputFile.open(userFilename, std::ios::app);
 
+        if (!outputFile) {
+            std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
+        } else {
+            // ... Ihre Nachrichtenverarbeitungslogik hier ...
+            // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
     std::string line;
     
     std::cout << "Bitte geben Sie den Benutzernamen ein: ";
-    std::cin.getline(sender.name, BUF);
+    std::cin.getline(send_.sender, BUF);
     
     // Erstelle einen Dateinamen für den Benutzer
-    std::string userFilename = messagesDirectory + "/" + sender.name + "_messages.txt";
+    std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
     
     std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
     
 
-        std::cout << "SEND\n";
-        std::cout << ">>Receiver: ";
-        std::cin.getline(sender.receiver, BUF);
+        std::cout  << "SEND\n" << ">> Sender: " << send_.sender;
+        std::cout << "\n>>Receiver: ";
+        std::cin.getline(send_.receiver, BUF);
         std::cout << ">>Subject: ";
-        std::cin.getline(sender.subject, 81);
+        std::cin.getline(send_.subject, 81);
         std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
 
         while (std::getline(std::cin, line)) {
             if (line == ".") {
                 break;
             }
-            sender.message += line + '\n';
+            send_.message += line + '\n';
         }
 
         // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
-        sender.messageNum++;
-        outputFile << "Message Number: " << sender.messageNum << '\n';
+        send_.messageNum++;
+        outputFile << "Message Number: " << send_.messageNum << '\n';
 
         // Schreibe die Benutzereingaben in die Datei
-        outputFile << "Receiver: " << sender.receiver << '\n';
-        outputFile << "Subject: " << sender.subject << '\n';
-        outputFile << "Message:\n" << sender.message;
+        outputFile << "Sender:" << send_.sender << '\n';
+        outputFile << "Receiver: " << send_.receiver << '\n';
+        outputFile << "Subject: " << send_.subject << '\n';
+        outputFile << "Message:\n" << send_.message;
+
+            outputFile.close();
+        }
+
+        // Senden Sie "OK" als Bestätigung an den Server
+        send(create_socket, "OK", 3, 0);
+      
     }
+}
+
+
     
-    outputFile.close();
-    if (expression[0] == 'q' || expression[0] == 'Q'){
-       isQuit = 0;
-    }
-
-
-/*
-    switch (expression[0]) {
-    case 's':
-    case 'S':
-            std::cout << "SEND\n";
-            std::cout << ">>Sender: ";
-            std::cin.getline(sender.name, BUF);
-            std::cout << ">>Receiver: ";
-            std::cin.getline(sender.receiver, BUF);
-            std::cout << ">>Subject: ";
-            std::cin.getline(sender.subject, 81);
-            std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
-            
-           
-            while (std::getline(std::cin, line)) {
-                if (line == ".") {
-                    break;
-                }
-                sender.message += line + '\n';
-            }
-
-            // Schreibe die Benutzereingaben in die Datei
-            outputFile << "Sender: " << sender.name << '\n';
-            outputFile << "Receiver: " << sender.receiver << '\n';
-            outputFile << "Subject: " << sender.subject << '\n';
-            outputFile << "Message:\n" << sender.message;
-
-            break;
-
-    case 'l':
-    case 'L':
-        */
-
-
-         
-         //////////////////////////////////////////////////////////////////////
+        // Warten Sie auf die Bestätigung vom Server
+   /* char serverResponse[BUF];
+    if (recv(create_socket, serverResponse, BUF - 1, 0) == -1) {
+        perror("Fehler beim Empfangen der Bestätigung vom Server");
+        // Hier können Sie entsprechend reagieren, wenn der Empfang fehlschlägt
+    } else {
+        serverResponse[size] = '\0';
+        printf("Server-Bestätigung: %s\n", serverResponse);
+        // Verarbeiten Sie die Server-Bestätigung ("OK" oder "FAIL")
+    }*/
+      
    
-   } while (strcmp(buffer, "quit") != 0 &&!isQuit);
+    
+if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
+    // Senden Sie den "Quit"-Befehl an den Server
+    send(create_socket, buffer, size, 0);
+printf("testBUFFER: %s\n", buffer);
+    // Schließen Sie die Verbindung auf der Client-Seite
+    if (shutdown(create_socket, SHUT_RDWR) == -1) {
+        perror("shutdown create_socket");
+    }
+    if (close(create_socket) == -1) {
+        perror("close create_socket");
+    }
+    create_socket = -1;
+
+    // Beenden Sie das Programm
+    break;
+}
+
+
+
+    /*if (buffer[0] == 'q' || buffer[0] == 'Q'){
+       isQuit = 0;
+    }     */
+         //////////////////////////////////////////////////////////////////////
+   //printf("BUFFER: %s\n", buffer);
+   //printf("BUFFER: %s\n", buffer);
+      }
+   } while (strcmp(buffer, "quit") != 0 || !isQuit);
 
    ////////////////////////////////////////////////////////////////////////////
    // CLOSES THE DESCRIPTOR

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <iostream>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -176,7 +177,12 @@ void *clientCommunication(void *data)
    {
       /////////////////////////////////////////////////////////////////////////
       // RECEIVE
+
+      //printf("BUFFERonServer: %s\n", buffer);
+      memset(buffer, 0, sizeof(buffer)); // Setzen Sie den gesamten Puffer auf Null
       size = recv(*current_socket, buffer, BUF - 1, 0);
+
+      //printf("SIZE: %d\n", size);
       if (size == -1)
       {
          if (abortRequested)
@@ -196,7 +202,7 @@ void *clientCommunication(void *data)
          break;
       }
 
-      // remove ugly debug message, because of the sent newline of client
+       //remove ugly debug message, because of the sent newline of client
       if (buffer[size - 2] == '\r' && buffer[size - 1] == '\n')
       {
          size -= 2;
@@ -207,30 +213,54 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
-      
-      printf("Message received: %s\n", buffer); // ignore error
+      /*Ablauf im Server:
 
+Der Server empfängt den Befehl "S" oder "s" vom Client.
+Der Server verarbeitet den Befehl und bestätigt die erfolgreiche Verarbeitung, indem er "OK" an den Client sendet, wenn alles in Ordnung ist.
+Der Server kann auch "FAIL" an den Client senden, wenn bei der Verarbeitung ein Fehler auftritt.
+Nachdem die Bestätigung an den Client gesendet wurde, kann der Server fortfahren, um die Nachricht vom Client zu empfangen, falls erforderlich.*/
+if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
+    // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
+    if (send(*current_socket, "OK", 3, 0) == -1) {
+        send(*current_socket, "FAIL", 5, 0);
+        perror("Fehler beim Senden der Bestätigung an den Client");
+    } else {
+        printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+
+        // Hier können Sie die Verarbeitung der Nachricht einfügen
+
+        send(*current_socket, "OK", 3, 0);
+    }
+    // Falls ein Fehler auftritt:
+    // send(create_socket, "FAIL", 4, 0);
+}else if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
+    // Senden Sie den "Quit"-Befehl an den Server
+     printf("Nachricht Quit erhalten: %s\n", buffer); 
+} else {
+    printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
+}
+      
       if (send(*current_socket, "OK", 3, 0) == -1)
       {
          perror("send answer failed");
          return NULL;
       }
-   } while (strcmp(buffer, "quit") != 0 && !abortRequested);
+   } while (strcmp(buffer, "q") != 0 || !abortRequested);
 
    // closes/frees the descriptor if not already
    if (*current_socket != -1)
    {
       if (shutdown(*current_socket, SHUT_RDWR) == -1)
       {
-         perror("shutdown new_socket");
+         perror("\nshutdown new_socket");
       }
       if (close(*current_socket) == -1)
       {
-         perror("close new_socket");
+         perror("\nclose new_socket");
       }
       *current_socket = -1;
    }
-
+   
    return NULL;
 }
 
@@ -249,11 +279,11 @@ void signalHandler(int sig)
       {
          if (shutdown(new_socket, SHUT_RDWR) == -1)
          {
-            perror("shutdown new_socket");
+            perror("\nshutdown new_socket");
          }
          if (close(new_socket) == -1)
          {
-            perror("close new_socket");
+            perror("\nclose new_socket");
          }
          new_socket = -1;
       }
@@ -262,11 +292,11 @@ void signalHandler(int sig)
       {
          if (shutdown(create_socket, SHUT_RDWR) == -1)
          {
-            perror("shutdown create_socket");
+            perror("\nshutdown create_socket");
          }
          if (close(create_socket) == -1)
          {
-            perror("close create_socket");
+            perror("\nclose create_socket");
          }
          create_socket = -1;
       }
