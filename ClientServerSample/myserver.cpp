@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <dirent.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -210,10 +211,49 @@ void *clientCommunication(void *data)
       
       printf("Message received: %s\n", buffer); // ignore error
 
-      if (send(*current_socket, "OK", 3, 0) == -1)
+
+ if (buffer[0] == 'L' && buffer[1] == ' ') 
+    {
+        char username[BUF];
+        sscanf(buffer, "L %s", username);  // Extract the username
+
+        DIR *dir;
+        struct dirent *entry;
+        char message[BUF] = "";
+        char filepath[BUF];
+
+        dir = opendir("messages");
+        if (dir == NULL) 
+        {
+            perror("Unable to open messages directory");
+            return NULL;
+        }
+
+        // Loop through the directory looking for files that match the username
+        while ((entry = readdir(dir)) != NULL) 
+        {
+            if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL) 
+            { 
+                snprintf(filepath, sizeof(filepath), "messages/%s", entry->d_name);
+                strcat(message, filepath);
+                strcat(message, "\n");
+            }
+        }
+        closedir(dir);
+
+        if (send(*current_socket, message, strlen(message), 0) == -1)
+        {
+            perror("send message list failed");
+            return NULL;
+        }
+    } 
+      else 
       {
-         perror("send answer failed");
-         return NULL;
+          if (send(*current_socket, "OK", 3, 0) == -1)
+          {
+              perror("send answer failed");
+              return NULL;
+          }
       }
    } while (strcmp(buffer, "quit") != 0 && !abortRequested);
 

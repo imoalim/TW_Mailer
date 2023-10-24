@@ -236,6 +236,32 @@ if (fgets(buffer, BUF, stdin) != NULL)
         outputFile << "Subject: " << sender.subject << '\n';
         outputFile << "Message:\n" << sender.message;
     }
+    if (buffer[0] == 'l' || buffer[0] == 'L') {
+    std::cout << "LIST MESSAGES\n";
+    std::cout << ">> Please enter the username: ";
+    std::cin.getline(sender.name, BUF);
+
+    std::string listRequest = "LIST " + std::string(sender.name);
+    strncpy(buffer, listRequest.c_str(), BUF);
+
+    if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
+        perror("send error");
+        break;
+    }
+
+    // Receive the list of messages from the server
+    size = recv(create_socket, buffer, BUF - 1, 0);
+    if (size == -1) {
+        perror("recv error");
+        break;
+    } else if (size == 0) {
+        printf("Server closed remote socket\n");
+        break;
+    } else {
+        buffer[size] = '\0';
+        printf("Received list of messages:\n%s\n", buffer);
+    }
+}
     
     outputFile.close();
     if (expression[0] == 'q' || expression[0] == 'Q'){
@@ -279,7 +305,7 @@ if (fgets(buffer, BUF, stdin) != NULL)
 
          
          //////////////////////////////////////////////////////////////////////
-   
+     memset(buffer, 0, BUF);
    } while (strcmp(buffer, "quit") != 0 &&!isQuit);
 
    ////////////////////////////////////////////////////////////////////////////
