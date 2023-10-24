@@ -217,7 +217,7 @@ void *clientCommunication(void *data)
       
 
 
- if (buffer[0] == 'L' && buffer[1] == ' ') 
+ if (strcmp(buffer, "L") == 0 || strcmp(buffer, "l") == 0) 
     {
         char username[BUF];
         sscanf(buffer, "L %s", username);  // Extract the username

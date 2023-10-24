@@ -195,7 +195,6 @@ if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
         perror("Fehler beim Senden der Bestätigung an den Client");
     } else {
         printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
-// Hier können Sie die Verarbeitung der Nachricht einfügen
         // Überprüfen und Öffnen der Ausgabedatei
         struct stat st;
         if (stat(messagesDirectory.c_str(), &st) != 0) {
@@ -253,12 +252,12 @@ if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
     }
       
     }
-    if (buffer[0] == 'l' || buffer[0] == 'L') {
+    if (strcmp(buffer, "L") == 0 || strcmp(buffer, "l") == 0) {
     std::cout << "LIST MESSAGES\n";
     std::cout << ">> Please enter the username: ";
     std::cin.getline(send_.sender, BUF);
 
-    std::string listRequest = "LIST " + std::string(send_.sender);
+    std::string listRequest = std::string(send_.sender);
     strncpy(buffer, listRequest.c_str(), BUF);
 
     if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
