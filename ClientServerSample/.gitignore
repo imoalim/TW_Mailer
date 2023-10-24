@@ -57,3 +57,6 @@ obj/*
 
 # Keep folders with .gitkeep
 !.gitkeep
+
+
+.vscode/settings.json
