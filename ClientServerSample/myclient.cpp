@@ -162,28 +162,6 @@ int main(int argc, char **argv)
                break;
             }
          }
-      
-      /*
-if (fgets(buffer, BUF, stdin) != NULL)
-      {
-         int size = strlen(buffer);
-         // remove new-line signs from string at the end
-         if (buffer[size - 2] == '\r' && buffer[size - 1] == '\n')
-         {
-            size -= 2;
-            buffer[size] = 0;
-         }
-         else if (buffer[size - 1] == '\n')
-         {
-            --size;
-            buffer[size] = 0;
-         }
-         isQuit = strcmp(buffer, "quit") == 0;
-      }     
-        break;
-        */
-      // std::cin.getline(buffer, BUF - 1);
-
       printf(">> If you want to SEND a message, type 'Send'\n");
       printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
       printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
@@ -275,26 +253,11 @@ if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
       
     }
 }
-
-
-    
-        // Warten Sie auf die Bestätigung vom Server
-   /* char serverResponse[BUF];
-    if (recv(create_socket, serverResponse, BUF - 1, 0) == -1) {
-        perror("Fehler beim Empfangen der Bestätigung vom Server");
-        // Hier können Sie entsprechend reagieren, wenn der Empfang fehlschlägt
-    } else {
-        serverResponse[size] = '\0';
-        printf("Server-Bestätigung: %s\n", serverResponse);
-        // Verarbeiten Sie die Server-Bestätigung ("OK" oder "FAIL")
-    }*/
-      
-   
     
 if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
     // Senden Sie den "Quit"-Befehl an den Server
     send(create_socket, buffer, size, 0);
-printf("testBUFFER: %s\n", buffer);
+   //printf("testBUFFER: %s\n", buffer);
     // Schließen Sie die Verbindung auf der Client-Seite
     if (shutdown(create_socket, SHUT_RDWR) == -1) {
         perror("shutdown create_socket");
@@ -307,13 +270,7 @@ printf("testBUFFER: %s\n", buffer);
     // Beenden Sie das Programm
     break;
 }
-
-
-
-    /*if (buffer[0] == 'q' || buffer[0] == 'Q'){
-       isQuit = 0;
-    }     */
-         //////////////////////////////////////////////////////////////////////
+   //////////////////////////////////////////////////////////////////////
    //printf("BUFFER: %s\n", buffer);
    //printf("BUFFER: %s\n", buffer);
       }

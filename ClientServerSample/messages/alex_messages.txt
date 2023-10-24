@@ -1,0 +1,6 @@
+Message Number: 1
+Sender:alex
+Receiver: asd
+Subject: asd
+Message:
+sadasdasdad.
