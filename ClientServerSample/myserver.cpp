@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <iostream>
+#include <vector>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -27,6 +28,29 @@ void *clientCommunication(void *data);
 void signalHandler(int sig);
 
 ///////////////////////////////////////////////////////////////////////////////
+
+struct InputSplitter {
+    static std::vector<std::string> split(const char* buffer, int size, char delimiter) {
+        std::vector<std::string> result;
+        std::string current;
+
+        for (int i = 0; i < size; i++) {
+            if (buffer[i] != delimiter) {
+                current += buffer[i];
+            } else {
+                result.push_back(current);
+                current = "";
+            }
+        }
+
+        // Überprüfen, ob 'current' noch Daten enthält, und sie zum Vektor hinzufügen
+        if (!current.empty()) {
+            result.push_back(current);
+        }
+
+        return result;
+    }
+};
 
 int main(void)
 {
@@ -215,13 +239,16 @@ void *clientCommunication(void *data)
 
       buffer[size] = '\0';
       
+      //bearbeite den Input
+      std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
 
- if (strcmp(buffer, "L") == 0 || strcmp(buffer, "l") == 0) 
+
+
+ if (input[0]== "s" && input[0]=="S") 
     {
         char username[BUF];
         sscanf(buffer, "L %s", username);  // Extract the username
-
         DIR *dir;
         struct dirent *entry;
         char message[BUF] = "";
@@ -266,7 +293,7 @@ Der Server empfängt den Befehl "S" oder "s" vom Client.
 Der Server verarbeitet den Befehl und bestätigt die erfolgreiche Verarbeitung, indem er "OK" an den Client sendet, wenn alles in Ordnung ist.
 Der Server kann auch "FAIL" an den Client senden, wenn bei der Verarbeitung ein Fehler auftritt.
 Nachdem die Bestätigung an den Client gesendet wurde, kann der Server fortfahren, um die Nachricht vom Client zu empfangen, falls erforderlich.*/
-if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
+if (strcmp(buffer, "Send") == 0) {
     // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
     if (send(*current_socket, "OK", 3, 0) == -1) {
         send(*current_socket, "FAIL", 5, 0);
