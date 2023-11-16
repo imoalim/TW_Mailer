@@ -175,6 +175,9 @@ int main(int argc, char **argv)
       //str to char array
       strcpy(clientInput_array, clientInput.c_str());
       std::vector<std::string> inputs;
+     // Um das Array zu leeren
+      memset(clientInput_array, 0, sizeof(clientInput_array[0])*BUF);
+      memset(buffer, 0, sizeof(buffer[0])*BUF);
 if (fgets(clientInput_array, BUF, stdin) != NULL)
       {  
          int size = strlen(clientInput_array);
@@ -183,6 +186,7 @@ if (fgets(clientInput_array, BUF, stdin) != NULL)
         if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r')) {
             clientInput_array[size - 1] =  '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
         }
+
      
      // printf("BUFFER: %s\n", buffer);
       // Erstelle einen Dateinamen für den Benutzer
@@ -197,9 +201,7 @@ Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "
 Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
 if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0) {
       inputs.push_back(std::string(clientInput_array));
-      // Um das Array zu leeren
-      memset(clientInput_array, 0, sizeof(clientInput_array[0])*BUF);
-      
+    
         // Überprüfen und Öffnen der Ausgabedatei
         struct stat st;
         if (stat(messagesDirectory.c_str(), &st) != 0) {
@@ -271,18 +273,32 @@ if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0) 
     send(create_socket, buffer,SendBuffer_size, 0); 
 
     }
-    if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0) {
-    send(create_socket, buffer, size, 0);
+if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0) {
+    inputs.push_back(std::string(clientInput_array));
     std::cout << "LIST MESSAGES\n";
     std::cin.getline(send_.sender, BUF);
+    inputs.push_back(std::string(send_.sender));
+    std::string combinedString;
+    for (const auto& input : inputs) {
+        combinedString += input + "\n";
+    }
+    // 'combinedString' in einen const char* umwandeln
+    strcpy(buffer, combinedString.c_str());
+    //memset(buffer, 0, sizeof(buffer[0])*BUF);
+    //size_t SendBuffer_size = strlen(buffer);
 
-    std::string listRequest = std::string(send_.sender);
-    strncpy(buffer, listRequest.c_str(), BUF);
+
+
+
+    //std::string listRequest = std::string(send_.sender);
+    //strncpy(buffer, listRequest.c_str(), BUF);
 
     if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
         perror("send error");
         break;
     }
+//TODO:: {"l", "ibrahim"}, so schaut jt der vector aús, im server einfach input[1] für den username nutzen
+
 
     // Receive the list of messages from the server
     size = recv(create_socket, buffer, BUF - 1, 0);

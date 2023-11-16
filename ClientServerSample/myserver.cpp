@@ -245,10 +245,10 @@ void *clientCommunication(void *data)
 
 
 
- if (input[0]== "s" && input[0]=="S") 
+ if (input[0]== "l" && input[0]=="L") 
     {
         char username[BUF];
-        sscanf(buffer, "L %s", username);  // Extract the username
+        sscanf(input[1].c_str(), "L %s", username);  // Extract the username
         DIR *dir;
         struct dirent *entry;
         char message[BUF] = "";
@@ -293,7 +293,7 @@ Der Server empfängt den Befehl "S" oder "s" vom Client.
 Der Server verarbeitet den Befehl und bestätigt die erfolgreiche Verarbeitung, indem er "OK" an den Client sendet, wenn alles in Ordnung ist.
 Der Server kann auch "FAIL" an den Client senden, wenn bei der Verarbeitung ein Fehler auftritt.
 Nachdem die Bestätigung an den Client gesendet wurde, kann der Server fortfahren, um die Nachricht vom Client zu empfangen, falls erforderlich.*/
-if (strcmp(buffer, "Send") == 0) {
+if (input[0]== "s" && input[0]=="S") {
     // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
     if (send(*current_socket, "OK", 3, 0) == -1) {
         send(*current_socket, "FAIL", 5, 0);
@@ -307,11 +307,11 @@ if (strcmp(buffer, "Send") == 0) {
     }
     // Falls ein Fehler auftritt:
     // send(create_socket, "FAIL", 4, 0);
-}else if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
+}else if (input[0]== "q" && input[0]=="Q"){
     // Senden Sie den "Quit"-Befehl an den Server
-     printf("Nachricht Quit erhalten: %s\n", buffer); 
+     printf("Nachricht Quit erhalten: %s\n", input[0].c_str()); 
 } else {
-    printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
+    printf("Nachricht erhalten: %s\n", input[0].c_str()); // Fehler ignorieren
 }
       
       if (send(*current_socket, "OK", 3, 0) == -1)
