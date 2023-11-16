@@ -1,0 +1,5 @@
+Message Number: 1
+Sender:n
+Receiver: 
+Subject: n
+Message:

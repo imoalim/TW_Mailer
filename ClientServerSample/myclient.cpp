@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <sys/stat.h> // Für die Verzeichniserstellung in C++ unter Linux/Unix
+#include <vector>
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
    int size;
    int isQuit = 1;
    std::string messagesDirectory = "messages";
+   std::string clientInput;
 
    ////////////////////////////////////////////////////////////////////////////
    // CREATE A SOCKET
@@ -167,15 +169,24 @@ int main(int argc, char **argv)
       printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
       printf(">> If you want to remove a specific message, type 'Delete'\n");
       printf(">> If you want to logout the client, type 'Quit'\n");
-if (fgets(buffer, BUF, stdin) != NULL)
-      {
-         
-         int size = strlen(buffer);
+      char clientInput_array[BUF];  // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
+      clientInput_array[0] = '\0';  // Initialisiere mit einem leeren String
+
+      //str to char array
+      strcpy(clientInput_array, clientInput.c_str());
+      std::vector<std::string> inputs;
+     // Um das Array zu leeren
+      memset(clientInput_array, 0, sizeof(clientInput_array[0])*BUF);
+      memset(buffer, 0, sizeof(buffer[0])*BUF);
+if (fgets(clientInput_array, BUF, stdin) != NULL)
+      {  
+         int size = strlen(clientInput_array);
 
 // Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
-        if (size >= 2 && (buffer[size - 1] == '\n' || buffer[size - 1] == '\r')) {
-            buffer[size - 1] =  '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
+        if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r')) {
+            clientInput_array[size - 1] =  '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
         }
+
      
      // printf("BUFFER: %s\n", buffer);
       // Erstelle einen Dateinamen für den Benutzer
@@ -188,19 +199,14 @@ Der Client sendet den "Send"-Befehl an den Server.
 Der Client wartet auf die Bestätigung vom Server.
 Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "OK" oder "FAIL" handelt.
 Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
-if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
-    // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
-    if (send(create_socket, "OK", 3, 0) == -1) {
-        send(create_socket, "FAIL", 5, 0);
-        perror("Fehler beim Senden der Bestätigung an den Client");
-    } else {
-        printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0) {
+      inputs.push_back(std::string(clientInput_array));
+    
         // Überprüfen und Öffnen der Ausgabedatei
         struct stat st;
         if (stat(messagesDirectory.c_str(), &st) != 0) {
             mkdir(messagesDirectory.c_str(), 0777);
         }
-        std::ofstream outputFile;
         std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
         outputFile.open(userFilename, std::ios::app);
 
@@ -219,7 +225,6 @@ if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
     
     std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
     
-
         std::cout  << "SEND\n" << ">> Sender: " << send_.sender;
         std::cout << "\n>>Receiver: ";
         std::cin.getline(send_.receiver, BUF);
@@ -248,22 +253,52 @@ if (strcmp(buffer, "S") == 0 || strcmp(buffer, "s") == 0) {
         }
 
         // Senden Sie "OK" als Bestätigung an den Server
-        send(create_socket, "OK", 3, 0);
-    }
-      
-    }
-    if (strcmp(buffer, "L") == 0 || strcmp(buffer, "l") == 0) {
-    std::cout << "LIST MESSAGES\n";
-    std::cout << ">> Please enter the username: ";
-    std::cin.getline(send_.sender, BUF);
+        inputs.push_back(send_.sender);
+        inputs.push_back(send_.receiver);
+        inputs.push_back(send_.message);
+        inputs.push_back(send_.subject);
+        inputs.push_back(std::to_string(send_.messageNum));
 
-    std::string listRequest = std::string(send_.sender);
-    strncpy(buffer, listRequest.c_str(), BUF);
+        memset(buffer, 0, sizeof(buffer[0])*BUF);
+        // Elemente des Vektors in den Buffer kopieren
+   // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
+    std::string combinedString;
+    for (const auto& input : inputs) {
+        combinedString += input + "\n";
+    }
+    // 'combinedString' in einen const char* umwandeln
+    strcpy(buffer, combinedString.c_str());
+    //memset(buffer, 0, sizeof(buffer[0])*BUF);
+   size_t SendBuffer_size = strlen(buffer);
+    send(create_socket, buffer,SendBuffer_size, 0); 
+
+    }
+if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0) {
+    inputs.push_back(std::string(clientInput_array));
+    std::cout << "LIST MESSAGES\n";
+    std::cin.getline(send_.sender, BUF);
+    inputs.push_back(std::string(send_.sender));
+    std::string combinedString;
+    for (const auto& input : inputs) {
+        combinedString += input + "\n";
+    }
+    // 'combinedString' in einen const char* umwandeln
+    strcpy(buffer, combinedString.c_str());
+    //memset(buffer, 0, sizeof(buffer[0])*BUF);
+    //size_t SendBuffer_size = strlen(buffer);
+
+
+
+
+    //std::string listRequest = std::string(send_.sender);
+    //strncpy(buffer, listRequest.c_str(), BUF);
 
     if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
         perror("send error");
         break;
     }
+//TODO:: {"l", "ibrahim"}, so schaut jt der vector aús, im server einfach input[1] für den username nutzen
+
 
     // Receive the list of messages from the server
     size = recv(create_socket, buffer, BUF - 1, 0);
