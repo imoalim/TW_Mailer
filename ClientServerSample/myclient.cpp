@@ -11,29 +11,28 @@
 #include <sys/stat.h> // Für die Verzeichniserstellung in C++ unter Linux/Unix
 #include <vector>
 
-
 ///////////////////////////////////////////////////////////////////////////////
 
 #define BUF 1024
 #define PORT 6543
 
 ///////////////////////////////////////////////////////////////////////////////
-/*void userInput(char input[], int isQuit){  
-   
+/*void userInput(char input[], int isQuit){
+
 }*/
 struct Send
 {
-  char sender[BUF];
-  char receiver[BUF];
-  char subject[81];
-  int messageNum = 0;
-  std::string message;
+   char sender[BUF];
+   char receiver[BUF];
+   char subject[81];
+   int messageNum = 0;
+   std::string message;
 };
 
-struct List{
-   Send send;   
+struct List
+{
+   Send send;
 };
-
 
 int main(int argc, char **argv)
 {
@@ -112,227 +111,244 @@ int main(int argc, char **argv)
 
    do
    {
-         // SEND DATA
-         // https://man7.org/linux/man-pages/man2/send.2.html
-         // send will fail if connection is closed, but does not set
-         // the error of send, but still the count of bytes sent
-         if ((send(create_socket, buffer, size, 0)) == -1) 
-         {
-            // in case the server is gone offline we will still not enter
-            // this part of code: see docs: https://linux.die.net/man/3/send
-            // >> Successful completion of a call to send() does not guarantee 
-            // >> delivery of the message. A return value of -1 indicates only 
-            // >> locally-detected errors.
-            // ... but
-            // to check the connection before send is sense-less because
-            // after checking the communication can fail (so we would need
-            // to have 1 atomic operation to check...)
-            perror("send error");
-            break;
-         }
+      // SEND DATA
+      // https://man7.org/linux/man-pages/man2/send.2.html
+      // send will fail if connection is closed, but does not set
+      // the error of send, but still the count of bytes sent
+      if ((send(create_socket, buffer, size, 0)) == -1)
+      {
+         // in case the server is gone offline we will still not enter
+         // this part of code: see docs: https://linux.die.net/man/3/send
+         // >> Successful completion of a call to send() does not guarantee
+         // >> delivery of the message. A return value of -1 indicates only
+         // >> locally-detected errors.
+         // ... but
+         // to check the connection before send is sense-less because
+         // after checking the communication can fail (so we would need
+         // to have 1 atomic operation to check...)
+         perror("send error");
+         break;
+      }
 
-         //////////////////////////////////////////////////////////////////////
-         // RECEIVE FEEDBACK
-         // consider: reconnect handling might be appropriate in somes cases
-         //           How can we determine that the command sent was received 
-         //           or not? 
-         //           - Resend, might change state too often. 
-         //           - Else a command might have been lost.
-         //
-         // solution 1: adding meta-data (unique command id) and check on the
-         //             server if already processed.
-         // solution 2: add an infrastructure component for messaging (broker)
-         //
-         size = recv(create_socket, buffer, BUF - 1, 0);
-         if (size == -1)
+      //////////////////////////////////////////////////////////////////////
+      // RECEIVE FEEDBACK
+      // consider: reconnect handling might be appropriate in somes cases
+      //           How can we determine that the command sent was received
+      //           or not?
+      //           - Resend, might change state too often.
+      //           - Else a command might have been lost.
+      //
+      // solution 1: adding meta-data (unique command id) and check on the
+      //             server if already processed.
+      // solution 2: add an infrastructure component for messaging (broker)
+      //
+      size = recv(create_socket, buffer, BUF - 1, 0);
+      if (size == -1)
+      {
+         perror("recv error");
+         break;
+      }
+      else if (size == 0)
+      {
+         printf("Server closed remote socket\n"); // ignore error
+         break;
+      }
+      else
+      {
+         buffer[size] = '\0';
+         printf("<< %s\n", buffer); // ignore error
+         if (strcmp("OK", buffer) != 0)
          {
-            perror("recv error");
+            fprintf(stderr, "<< Server error occured, abort\n");
             break;
          }
-         else if (size == 0)
-         {
-            printf("Server closed remote socket\n"); // ignore error
-            break;
-         }
-         else
-         {
-            buffer[size] = '\0';
-            printf("<< %s\n", buffer); // ignore error
-            if (strcmp("OK", buffer) != 0)
-            {
-               fprintf(stderr, "<< Server error occured, abort\n");
-               break;
-            }
-         }
+      }
       printf(">> If you want to SEND a message, type 'Send'\n");
       printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
       printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
       printf(">> If you want to remove a specific message, type 'Delete'\n");
       printf(">> If you want to logout the client, type 'Quit'\n");
-      char clientInput_array[BUF];  // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
-      clientInput_array[0] = '\0';  // Initialisiere mit einem leeren String
+      char clientInput_array[BUF]; // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
+      clientInput_array[0] = '\0'; // Initialisiere mit einem leeren String
 
-      //str to char array
+      // str to char array
       strcpy(clientInput_array, clientInput.c_str());
       std::vector<std::string> inputs;
-     // Um das Array zu leeren
-      memset(clientInput_array, 0, sizeof(clientInput_array[0])*BUF);
-      memset(buffer, 0, sizeof(buffer[0])*BUF);
-if (fgets(clientInput_array, BUF, stdin) != NULL)
-      {  
+      // Um das Array zu leeren
+      memset(clientInput_array, 0, sizeof(clientInput_array[0]) * BUF);
+      memset(buffer, 0, sizeof(buffer[0]) * BUF);
+      if (fgets(clientInput_array, BUF, stdin) != NULL)
+      {
          int size = strlen(clientInput_array);
 
-// Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
-        if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r')) {
-            clientInput_array[size - 1] =  '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
-        }
+         // Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
+         if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r'))
+         {
+            clientInput_array[size - 1] = '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
+         }
 
-     
-     // printf("BUFFER: %s\n", buffer);
-      // Erstelle einen Dateinamen für den Benutzer
-       
-      std::ofstream outputFile;
-     // printf("BUFFER: %s\n", buffer);
-      /*Hier ist der Ablauf im Client:
+         // printf("BUFFER: %s\n", buffer);
+         // Erstelle einen Dateinamen für den Benutzer
 
-Der Client sendet den "Send"-Befehl an den Server.
-Der Client wartet auf die Bestätigung vom Server.
-Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "OK" oder "FAIL" handelt.
-Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
-if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0) {
-      inputs.push_back(std::string(clientInput_array));
-    
-        // Überprüfen und Öffnen der Ausgabedatei
-        struct stat st;
-        if (stat(messagesDirectory.c_str(), &st) != 0) {
-            mkdir(messagesDirectory.c_str(), 0777);
-        }
-        std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
-        outputFile.open(userFilename, std::ios::app);
+         std::ofstream outputFile;
+         // printf("BUFFER: %s\n", buffer);
+         /*Hier ist der Ablauf im Client:
 
-        if (!outputFile) {
-            std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
-        } else {
-            // ... Ihre Nachrichtenverarbeitungslogik hier ...
-            // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
-    std::string line;
-    
-    std::cout << "Bitte geben Sie den Benutzernamen ein: ";
-    std::cin.getline(send_.sender, BUF);
-    
-    // Erstelle einen Dateinamen für den Benutzer
-    std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
-    
-    std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
-    
-        std::cout  << "SEND\n" << ">> Sender: " << send_.sender;
-        std::cout << "\n>>Receiver: ";
-        std::cin.getline(send_.receiver, BUF);
-        std::cout << ">>Subject: ";
-        std::cin.getline(send_.subject, 81);
-        std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
+   Der Client sendet den "Send"-Befehl an den Server.
+   Der Client wartet auf die Bestätigung vom Server.
+   Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "OK" oder "FAIL" handelt.
+   Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
+         if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0)
+         {
+            inputs.push_back(std::string(clientInput_array));
 
-        while (std::getline(std::cin, line)) {
-            if (line == ".") {
-                break;
+            // Überprüfen und Öffnen der Ausgabedatei
+            struct stat st;
+            if (stat(messagesDirectory.c_str(), &st) != 0)
+            {
+               mkdir(messagesDirectory.c_str(), 0777);
             }
-            send_.message += line + '\n';
-        }
+            std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+            outputFile.open(userFilename, std::ios::app);
 
-        // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
-        send_.messageNum++;
-        outputFile << "Message Number: " << send_.messageNum << '\n';
+            if (!outputFile)
+            {
+               std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
+            }
+            else
+            {
+               // ... Ihre Nachrichtenverarbeitungslogik hier ...
+               // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
+               std::string line;
 
-        // Schreibe die Benutzereingaben in die Datei
-        outputFile << "Sender:" << send_.sender << '\n';
-        outputFile << "Receiver: " << send_.receiver << '\n';
-        outputFile << "Subject: " << send_.subject << '\n';
-        outputFile << "Message:\n" << send_.message;
+               std::cout << "Bitte geben Sie den Benutzernamen ein: ";
+               std::cin.getline(send_.sender, BUF);
 
-            outputFile.close();
-        }
+               // Erstelle einen Dateinamen für den Benutzer
+               std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
 
-        // Senden Sie "OK" als Bestätigung an den Server
-        inputs.push_back(send_.sender);
-        inputs.push_back(send_.receiver);
-        inputs.push_back(send_.message);
-        inputs.push_back(send_.subject);
-        inputs.push_back(std::to_string(send_.messageNum));
+               std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
 
-        memset(buffer, 0, sizeof(buffer[0])*BUF);
-        // Elemente des Vektors in den Buffer kopieren
-   // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
-    std::string combinedString;
-    for (const auto& input : inputs) {
-        combinedString += input + "\n";
-    }
-    // 'combinedString' in einen const char* umwandeln
-    strcpy(buffer, combinedString.c_str());
-    //memset(buffer, 0, sizeof(buffer[0])*BUF);
-   size_t SendBuffer_size = strlen(buffer);
-    send(create_socket, buffer,SendBuffer_size, 0); 
+               std::cout << "SEND\n"
+                         << ">> Sender: " << send_.sender;
+               std::cout << "\n>>Receiver: ";
+               std::cin.getline(send_.receiver, BUF);
+               std::cout << ">>Subject: ";
+               std::cin.getline(send_.subject, 81);
+               std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
 
-    }
-if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0) {
-    inputs.push_back(std::string(clientInput_array));
-    std::cout << "LIST MESSAGES\n";
-    std::cin.getline(send_.sender, BUF);
-    inputs.push_back(std::string(send_.sender));
-    std::string combinedString;
-    for (const auto& input : inputs) {
-        combinedString += input + "\n";
-    }
-    // 'combinedString' in einen const char* umwandeln
-    strcpy(buffer, combinedString.c_str());
-    //memset(buffer, 0, sizeof(buffer[0])*BUF);
-    //size_t SendBuffer_size = strlen(buffer);
+               while (std::getline(std::cin, line))
+               {
+                  if (line == ".")
+                  {
+                     break;
+                  }
+                  send_.message += line + '\n';
+               }
 
+               // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
+               send_.messageNum++;
+               outputFile << "Message Number: " << send_.messageNum << '\n';
 
+               // Schreibe die Benutzereingaben in die Datei
+               outputFile << "Sender:" << send_.sender << '\n';
+               outputFile << "Receiver: " << send_.receiver << '\n';
+               outputFile << "Subject: " << send_.subject << '\n';
+               outputFile << "Message:\n"
+                          << send_.message;
 
+               outputFile.close();
+            }
 
-    //std::string listRequest = std::string(send_.sender);
-    //strncpy(buffer, listRequest.c_str(), BUF);
+            // Senden Sie "OK" als Bestätigung an den Server
+            inputs.push_back(send_.sender);
+            inputs.push_back(send_.receiver);
+            inputs.push_back(send_.message);
+            inputs.push_back(send_.subject);
+            inputs.push_back(std::to_string(send_.messageNum));
 
-    if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
-        perror("send error");
-        break;
-    }
-//TODO:: {"l", "ibrahim"}, so schaut jt der vector aús, im server einfach input[1] für den username nutzen
+            memset(buffer, 0, sizeof(buffer[0]) * BUF);
+            // Elemente des Vektors in den Buffer kopieren
+            // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
+            std::string combinedString;
+            for (const auto &input : inputs)
+            {
+               combinedString += input + "\n";
+            }
+            // 'combinedString' in einen const char* umwandeln
+            strcpy(buffer, combinedString.c_str());
+            // memset(buffer, 0, sizeof(buffer[0])*BUF);
+            size_t SendBuffer_size = strlen(buffer);
+            send(create_socket, buffer, SendBuffer_size, 0);
+         }
+         if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0)
+         // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
+         {
+            inputs.push_back(std::string(clientInput_array));
+            std::cout << "LIST MESSAGES\nUsername: ";
+            std::cin.getline(send_.sender, BUF);
+            inputs.push_back(std::string(send_.sender));
+            std::string combinedString;
+            for (const auto &input : inputs)
+            {
+               combinedString += input + "\n";
+            }
+            // 'combinedString' in einen const char* umwandeln
+            strcpy(buffer, combinedString.c_str());
+            // memset(buffer, 0, sizeof(buffer[0])*BUF);
+            // size_t SendBuffer_size = strlen(buffer);
 
+            // std::string listRequest = std::string(send_.sender);
+            // strncpy(buffer, listRequest.c_str(), BUF);
 
-    // Receive the list of messages from the server
-    size = recv(create_socket, buffer, BUF - 1, 0);
-    if (size == -1) {
-        perror("recv error");
-        break;
-    } else if (size == 0) {
-        printf("Server closed remote socket\n");
-        break;
-    } else {
-        buffer[size] = '\0';
-        printf("Received list of messages:\n%s\n", buffer);
-    }
-}
-    
-if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
-    // Senden Sie den "Quit"-Befehl an den Server
-    send(create_socket, buffer, size, 0);
-   //printf("testBUFFER: %s\n", buffer);
-    // Schließen Sie die Verbindung auf der Client-Seite
-    if (shutdown(create_socket, SHUT_RDWR) == -1) {
-        perror("shutdown create_socket");
-    }
-    if (close(create_socket) == -1) {
-        perror("close create_socket");
-    }
-    create_socket = -1;
+            if (send(create_socket, buffer, strlen(buffer), 0) == -1)
+            {
+               perror("send error");
+               break;
+            }
 
-    // Beenden Sie das Programm
-    break;
-}
-   //////////////////////////////////////////////////////////////////////
-   //printf("BUFFER: %s\n", buffer);
-   //printf("BUFFER: %s\n", buffer);
+            // Receive the list of messages from the server
+            size = recv(create_socket, buffer, BUF - 1, 0);
+            if (size == -1)
+            {
+               perror("recv error");
+               break;
+            }
+            else if (size == 0)
+            {
+               printf("Server closed remote socket\n");
+               break;
+            }
+            else
+            {
+               buffer[size] = '\0';
+               // printf("Received list of messages:\n%s\n", buffer);
+               // send(create_socket, "OK", 3, 0);
+            }
+         }
+
+         if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0)
+         {
+            // Senden Sie den "Quit"-Befehl an den Server
+            send(create_socket, buffer, size, 0);
+            // printf("testBUFFER: %s\n", buffer);
+            //  Schließen Sie die Verbindung auf der Client-Seite
+            if (shutdown(create_socket, SHUT_RDWR) == -1)
+            {
+               perror("shutdown create_socket");
+            }
+            if (close(create_socket) == -1)
+            {
+               perror("close create_socket");
+            }
+            create_socket = -1;
+
+            // Beenden Sie das Programm
+            break;
+         }
+         //////////////////////////////////////////////////////////////////////
+         // printf("BUFFER: %s\n", buffer);
+         //  printf("BUFFER: %s\n", buffer);
       }
    } while (strcmp(buffer, "quit") != 0 || !isQuit);
 
@@ -343,7 +359,7 @@ if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0) {
       if (shutdown(create_socket, SHUT_RDWR) == -1)
       {
          // invalid in case the server is gone already
-         perror("shutdown create_socket"); 
+         perror("shutdown create_socket");
       }
       if (close(create_socket) == -1)
       {
