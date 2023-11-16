@@ -10,6 +10,9 @@
 #include <dirent.h>
 #include <iostream>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <unordered_set> // Zum Überprüfen der Eindeutigkeit der Message Numbers
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -29,27 +32,137 @@ void signalHandler(int sig);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-struct InputSplitter {
-    static std::vector<std::string> split(const char* buffer, int size, char delimiter) {
-        std::vector<std::string> result;
-        std::string current;
+// Funktion zum Extrahieren von Nachrichteninformationen
+struct MessageInfo
+{
+   int messageNumber;
+   std::string subject;
+};
 
-        for (int i = 0; i < size; i++) {
-            if (buffer[i] != delimiter) {
-                current += buffer[i];
-            } else {
-                result.push_back(current);
-                current = "";
+// Funktion zum Extrahieren von Nachrichteninformationen
+std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
+{
+   std::ifstream file(filepath);
+   std::vector<MessageInfo> messages;
+
+   if (file.is_open())
+   {
+      std::string line;
+      int currentMessageNumber = 0;
+      std::unordered_set<int> uniqueMessageNumbers; // Um die Eindeutigkeit der Message Numbers sicherzustellen
+
+      while (std::getline(file, line))
+      {
+         if (line.find("Message Number:") != std::string::npos)
+         {
+            // Extrahiere die Message Number aus der Zeile
+            int extractedMessageNumber = 0;
+            std::istringstream(line.substr(line.find(":") + 1)) >> extractedMessageNumber;
+
+            // Überprüfe, ob die Message Number eindeutig ist
+            while (uniqueMessageNumbers.find(extractedMessageNumber) != uniqueMessageNumbers.end())
+            {
+               // Wenn nicht eindeutig, erhöhe die Message Number
+               extractedMessageNumber++;
             }
-        }
 
-        // Überprüfen, ob 'current' noch Daten enthält, und sie zum Vektor hinzufügen
-        if (!current.empty()) {
+            // Aktualisiere die aktuelle Message Number
+            currentMessageNumber = extractedMessageNumber;
+
+            // Füge die Message Number zur Menge der eindeutigen Message Numbers hinzu
+            uniqueMessageNumbers.insert(currentMessageNumber);
+         }
+         else if (line.find("Subject:") != std::string::npos)
+         {
+            // Extrahiere das Subject aus der Zeile
+            std::string subject = line.substr(line.find(":") + 2);
+
+            // Füge die MessageInfo zum Vektor hinzu
+            messages.push_back({currentMessageNumber, subject});
+         }
+      }
+
+      file.close();
+   }
+   else
+   {
+      std::cerr << "Unable to open file: " << filepath << std::endl;
+   }
+
+   return messages;
+}
+
+// Funktion zum Extrahieren von Nachrichten
+std::string extractMessages(const std::string &username)
+{
+   DIR *dir;
+   struct dirent *entry;
+   std::stringstream allMessages;
+   int totalMessages = 0;
+   std::vector<std::string> allSubjects;
+
+   dir = opendir("messages");
+   if (dir == NULL)
+   {
+      perror("Unable to open messages directory");
+      return "";
+   }
+
+   // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
+   while ((entry = readdir(dir)) != NULL)
+   {
+      if (entry->d_type == DT_REG && strstr(entry->d_name, username.c_str()) != NULL)
+      {
+         std::string filepath = "messages/" + std::string(entry->d_name);
+         std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
+
+         for (const auto &info : messageInfo)
+         {
+            totalMessages++;
+            allSubjects.push_back(info.subject);
+         }
+      }
+   }
+   closedir(dir);
+
+   // Erstellen der Antwort im gewünschten Format
+   allMessages << totalMessages << "\n";
+   for (const auto &subject : allSubjects)
+   {
+      allMessages << subject << "\n";
+   }
+
+   return allMessages.str();
+}
+
+struct InputSplitter
+{
+   static std::vector<std::string> split(const char *buffer, int size, char delimiter)
+   {
+      std::vector<std::string> result;
+      std::string current;
+
+      for (int i = 0; i < size; i++)
+      {
+         if (buffer[i] != delimiter)
+         {
+            current += buffer[i];
+         }
+         else
+         {
             result.push_back(current);
-        }
+            current = "";
+         }
+      }
 
-        return result;
-    }
+      // Überprüfen, ob 'current' noch Daten enthält, und sie zum Vektor hinzufügen
+      if (!current.empty())
+      {
+         result.push_back(current);
+      }
+
+      return result;
+   }
 };
 
 int main(void)
@@ -203,11 +316,11 @@ void *clientCommunication(void *data)
       /////////////////////////////////////////////////////////////////////////
       // RECEIVE
 
-      //printf("BUFFERonServer: %s\n", buffer);
+      // printf("BUFFERonServer: %s\n", buffer);
       memset(buffer, 0, sizeof(buffer)); // Setzen Sie den gesamten Puffer auf Null
       size = recv(*current_socket, buffer, BUF - 1, 0);
 
-      //printf("SIZE: %d\n", size);
+      // printf("SIZE: %d\n", size);
       if (size == -1)
       {
          if (abortRequested)
@@ -220,14 +333,13 @@ void *clientCommunication(void *data)
          }
          break;
       }
-
       if (size == 0)
       {
          printf("Client closed remote socket\n"); // ignore error
          break;
       }
 
-       //remove ugly debug message, because of the sent newline of client
+      // remove ugly debug message, because of the sent newline of client
       if (buffer[size - 2] == '\r' && buffer[size - 1] == '\n')
       {
          size -= 2;
@@ -238,89 +350,107 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
-      
-      //bearbeite den Input
+      // TODO:: falls OK nicht InputSplittre aufrufen
+
+      // bearbeite den Input
       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
+      std::string command = input[0];
 
+      switch (command[0])
+      {
+      case 'l':
+      case 'L':
+      {
+         char username[BUF];
+         strcpy(username, input[1].c_str());
 
+         // Nachrichteninformationen extrahieren
+         int totalMessages = 0;
+         std::vector<std::string> allSubjects;
 
- if (input[0]== "l" && input[0]=="L") 
-    {
-        char username[BUF];
-        sscanf(input[1].c_str(), "L %s", username);  // Extract the username
-        DIR *dir;
-        struct dirent *entry;
-        char message[BUF] = "";
-        char filepath[BUF];
+         DIR *dir;
+         struct dirent *entry;
 
-        dir = opendir("messages");
-        if (dir == NULL) 
-        {
+         dir = opendir("messages");
+         if (dir == NULL)
+         {
             perror("Unable to open messages directory");
             return NULL;
-        }
+         }
 
-        // Loop through the directory looking for files that match the username
-        while ((entry = readdir(dir)) != NULL) 
-        {
-            if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL) 
-            { 
-                snprintf(filepath, sizeof(filepath), "messages/%s", entry->d_name);
-                strcat(message, filepath);
-                strcat(message, "\n");
+         // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
+         while ((entry = readdir(dir)) != NULL)
+         {
+            if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+            {
+               std::string filepath = "messages/" + std::string(entry->d_name);
+
+               // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
+               if (access(filepath.c_str(), F_OK) != -1)
+               {
+                  // Hier speicherst du die zurückgegebenen Informationen
+                  std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
+
+                  int messageCount = messageInfo.size();
+                  std::vector<std::string> subjects;
+
+                  // Hier fügst du die Betreffzeilen zur allSubjects hinzu
+                  for (const auto &info : messageInfo)
+                  {
+                     subjects.push_back(info.subject);
+                  }
+
+                  totalMessages += messageCount;
+                  allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
+               }
+               else
+               {
+                  std::cerr << "File does not exist: " << filepath << std::endl;
+                  // Sende eine Fehlermeldung an den Client
+                  send(*current_socket, "FAIL: File does not exist", 26, 0);
+                  return NULL;
+               }
             }
-        }
-        closedir(dir);
+         }
+         closedir(dir);
 
-        if (send(*current_socket, message, strlen(message), 0) == -1)
-        {
-            perror("send message list failed");
+         // Zeige die Nachrichteninformationen auf der Serverkonsole an
+         printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
+         printf("Betreff der Nachrichten:\n");
+
+         for (const auto &subject : allSubjects)
+         {
+            printf("%s\n", subject.c_str());
+         }
+
+         // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
+         if (send(*current_socket, "OK", 3, 0) == -1)
+         {
+            perror("send OK failed");
             return NULL;
-        }
-    } 
-      else 
-      {
-          if (send(*current_socket, "OK", 3, 0) == -1)
-          {
-              perror("send answer failed");
-              return NULL;
-          }
+         }
+
+         break;
       }
 
-      /*Ablauf im Server:
-Der Server empfängt den Befehl "S" oder "s" vom Client.
-Der Server verarbeitet den Befehl und bestätigt die erfolgreiche Verarbeitung, indem er "OK" an den Client sendet, wenn alles in Ordnung ist.
-Der Server kann auch "FAIL" an den Client senden, wenn bei der Verarbeitung ein Fehler auftritt.
-Nachdem die Bestätigung an den Client gesendet wurde, kann der Server fortfahren, um die Nachricht vom Client zu empfangen, falls erforderlich.*/
-if (input[0]== "s" && input[0]=="S") {
-    // Sende "OK" an den Client, um die erfolgreiche Nachrichtenübertragung zu bestätigen
-    if (send(*current_socket, "OK", 3, 0) == -1) {
-        send(*current_socket, "FAIL", 5, 0);
-        perror("Fehler beim Senden der Bestätigung an den Client");
-    } else {
-        printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+      case 'q':
+      case 'Q':
+         // Senden Sie den "Quit"-Befehl an den Server
+         printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
+         break;
 
-        // Hier können Sie die Verarbeitung der Nachricht einfügen
-
-        send(*current_socket, "OK", 3, 0);
-    }
-    // Falls ein Fehler auftritt:
-    // send(create_socket, "FAIL", 4, 0);
-}else if (input[0]== "q" && input[0]=="Q"){
-    // Senden Sie den "Quit"-Befehl an den Server
-     printf("Nachricht Quit erhalten: %s\n", input[0].c_str()); 
-} else {
-    printf("Nachricht erhalten: %s\n", input[0].c_str()); // Fehler ignorieren
-}
-      
+      default:
+         printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
+         break;
+      }
       if (send(*current_socket, "OK", 3, 0) == -1)
       {
-          if (send(*current_socket, "OK", 3, 0) == -1)
-          {
-              perror("send answer failed");
-              return NULL;
-          }
+         if (send(*current_socket, "OK", 3, 0) == -1)
+         {
+            perror("send answer failed");
+            return NULL;
+         }
       }
    } while (strcmp(buffer, "q") != 0 || !abortRequested);
 
@@ -337,7 +467,7 @@ if (input[0]== "s" && input[0]=="S") {
       }
       *current_socket = -1;
    }
-   
+
    return NULL;
 }
 
