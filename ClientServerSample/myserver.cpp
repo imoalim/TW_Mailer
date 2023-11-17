@@ -621,19 +621,70 @@ void *clientCommunication(void *data)
                   printf("%s\n", subject.c_str());
                }
 
-         // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
-         if (send(*current_socket, "OK", 3, 0) == -1)
-         {
-            perror("send OK failed");
-            return NULL;
+               // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
+               if (send(*current_socket, "OK", 3, 0) == -1)
+               {
+                  perror("send OK failed");
+                  return NULL;
+               }
+            }
          }
-      }
+   
+if (command == "Read" || command == "read"){
+        // Assuming the username is the second string in the input vector
+        // and the message number is the third
+        std::string username = input[1];
+        int messageNumber = std::stoi(input[2]);
+
+        // Construct the filename based on the username
+        std::string filename = "messages/" + username + "_messages.txt";
+
+        // Open the file for reading
+        std::ifstream inputFile(filename);
+        if (!inputFile.is_open()) {
+            std::string errorMsg = "ERROR: Unable to open message file.";
+            send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
+            break;
+        }
+
+        std::string line, subject;
+        bool messageFound = false;
+
+        // Read the file line by line
+        while (std::getline(inputFile, line)) {
+            if (line.substr(0, 16) == "Message Number: ") {
+                int currentMessageNumber = std::stoi(line.substr(16));
+                if (currentMessageNumber == messageNumber) {
+                    messageFound = true;
+                    continue; // Continue to read the next line for subject
+                }
+            }
+            if (messageFound && line.substr(0, 9) == "Subject: ") {
+                subject = line.substr(9);
+                break; // Found the subject, no need to continue reading
+            }
+        }
+
+        inputFile.close();
+
+        if (!subject.empty()) {
+            // Send the subject to the client
+            send(*current_socket, subject.c_str(), subject.length(), 0);
+        } else {
+            // Send an error message if the subject wasn't found
+            std::string errorMsg = "ERROR: Message subject not found.";
+            send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
+        }
+        break;
+    }
+
+      
 
       if (command == "Quit" || command == "quit")
-      {
-         // Senden Sie den "Quit"-Befehl an den Server
-         printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
-      }
+         {
+            // Senden Sie den "Quit"-Befehl an den Server
+            printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
+         }
       }
       else
       {
