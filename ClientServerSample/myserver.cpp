@@ -435,54 +435,107 @@ void *clientCommunication(void *data)
       }
 
 
+// ... [previous code]
+
 case 'r':
-    case 'R': {
-        // Assuming the username is the second string in the input vector
-        // and the message number is the third
-        std::string username = input[1];
-        int messageNumber = std::stoi(input[2]);
+case 'R': {
+    std::string username = input[1];
+    int messageNumber = std::stoi(input[2]);
+    std::string filename = "messages/" + username + "_messages.txt";
 
-        // Construct the filename based on the username
-        std::string filename = "messages/" + username + "_messages.txt";
-
-        // Open the file for reading
-        std::ifstream inputFile(filename);
-        if (!inputFile.is_open()) {
-            std::string errorMsg = "ERROR: Unable to open message file.";
-            send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
-            break;
-        }
-
-        std::string line, subject;
-        bool messageFound = false;
-
-        // Read the file line by line
-        while (std::getline(inputFile, line)) {
-            if (line.substr(0, 16) == "Message Number: ") {
-                int currentMessageNumber = std::stoi(line.substr(16));
-                if (currentMessageNumber == messageNumber) {
-                    messageFound = true;
-                    continue; // Continue to read the next line for subject
-                }
-            }
-            if (messageFound && line.substr(0, 9) == "Subject: ") {
-                subject = line.substr(9);
-                break; // Found the subject, no need to continue reading
-            }
-        }
-
-        inputFile.close();
-
-        if (!subject.empty()) {
-            // Send the subject to the client
-            send(*current_socket, subject.c_str(), subject.length(), 0);
-        } else {
-            // Send an error message if the subject wasn't found
-            std::string errorMsg = "ERROR: Message subject not found.";
-            send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
-        }
+    std::ifstream inputFile(filename);
+    if (!inputFile.is_open()) {
+        std::string errorMsg = "ERROR: Unable to open message file.";
+        send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
         break;
     }
+
+    std::string line, messageContent;
+    bool messageFound = false;
+    bool isReadingMessage = false; // Indicates if we are currently reading the desired message
+
+    // Read the file line by line
+    while (std::getline(inputFile, line)) {
+        if (line.substr(0, 16) == "Message Number: ") {
+            int currentMessageNumber = std::stoi(line.substr(16));
+            if (currentMessageNumber == messageNumber) {
+                messageFound = true;
+                isReadingMessage = true; // Start reading the message
+                messageContent += line + '\n'; // Include the "Message Number" line
+                continue;
+            } else {
+                isReadingMessage = false; // Stop reading if we reach a new message
+            }
+        }
+
+        if (isReadingMessage) {
+            messageContent += line + '\n'; // Append line to message content
+        }
+    }
+
+    inputFile.close();
+
+    if (messageFound) {
+        // Send the entire message content to the client
+        send(*current_socket, messageContent.c_str(), messageContent.length(), 0);
+    } else {
+        // Send an error message if the message wasn't found
+        std::string errorMsg = "ERROR: Message not found.";
+        send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
+    }
+    break;
+}
+
+// ... [rest of the code]
+// ... Inside the clientCommunication function ...
+
+case 'd':
+case 'D': {
+    std::string username = input[1]; // assuming username is also sent
+    int messageNumberToDelete = std::stoi(input[2]);
+
+    std::string filePath = "messages/" + username + "_messages.txt";
+    std::ifstream inputFile(filePath);
+    std::ofstream tempFile("messages/temp.txt");
+    std::string line;
+    bool isDeleted = false;
+
+    if (inputFile.is_open() && tempFile.is_open()) {
+        while (getline(inputFile, line)) {
+            // Parse and check if the line contains the message number to be deleted
+            if (line.substr(0, 16) == "Message Number: " &&
+                std::stoi(line.substr(16)) == messageNumberToDelete) {
+                isDeleted = true;
+                // Skip this message
+                while (getline(inputFile, line) && !line.empty()) {
+                    // Skip lines until an empty line (end of message)
+                }
+            } else {
+                // Write other messages to temp file
+                tempFile << line << '\n';
+            }
+        }
+        inputFile.close();
+        tempFile.close();
+
+        // Replace old file with new one
+        remove(filePath.c_str());
+        rename("messages/temp.txt", filePath.c_str());
+
+        if (isDeleted) {
+            send(*current_socket, "OK\n", 4, 0);
+        } else {
+            send(*current_socket, "ERR\n", 5, 0);
+        }
+    } else {
+        send(*current_socket, "ERR\n", 5, 0);
+    }
+    break;
+}
+
+// ...
+
+
 
       
 
