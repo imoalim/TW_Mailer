@@ -1,6 +1,0 @@
-Message Number: 1
-Sender:kasl
-Receiver: asd
-Subject: assd.
-Message:
-assd.

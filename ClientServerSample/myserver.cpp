@@ -359,6 +359,25 @@ void *clientCommunication(void *data)
 
       switch (command[0])
       {
+      case 's':
+      case 'S':
+      //TODO:: es geht beim send befehl zweimal hinein. FIX BUG
+      {
+         if (send(*current_socket, "OK", 3, 0) == -1)
+         {
+            send(*current_socket, "FAIL", 5, 0);
+            perror("Fehler beim Senden der Bestätigung an den Client");
+         }
+         else
+         {
+            printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+
+            send(*current_socket, "OK", 3, 0);
+         }
+         // Falls ein Fehler auftritt:
+         // send(create_socket, "FAIL", 4, 0);
+         break;
+      }
       case 'l':
       case 'L':
       {

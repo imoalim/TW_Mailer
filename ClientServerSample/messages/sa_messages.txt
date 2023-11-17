@@ -1,7 +1,0 @@
-Message Number: 1
-Sender:sa
-Receiver: 
-Subject: a
-Message:
-a
-a

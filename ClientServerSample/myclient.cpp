@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sys/stat.h> // Für die Verzeichniserstellung in C++ unter Linux/Unix
 #include <vector>
+#include <sstream>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -247,10 +248,27 @@ int main(int argc, char **argv)
                }
 
                // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
-               send_.messageNum++;
-               outputFile << "Message Number: " << send_.messageNum << '\n';
+               int lastMessageNum = 0;
+               std::ifstream inputFile(userFilename);
+               if (inputFile.is_open())
+               {
+                  std::string line;
+                  while (std::getline(inputFile, line))
+                  {
+                     std::istringstream iss(line);
+                     std::string token;
+                     if (iss >> token && token == "Message" && iss >> token && token == "Number:")
+                     {
+                        iss >> lastMessageNum;
+                     }
+                  }
+                  inputFile.close();
+               }
+
+               send_.messageNum = lastMessageNum + 1;
 
                // Schreibe die Benutzereingaben in die Datei
+               outputFile << "Message Number: " << send_.messageNum << '\n';
                outputFile << "Sender:" << send_.sender << '\n';
                outputFile << "Receiver: " << send_.receiver << '\n';
                outputFile << "Subject: " << send_.subject << '\n';

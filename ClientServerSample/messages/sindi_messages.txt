@@ -1,6 +1,6 @@
 Message Number: 1
-Sender:ali
+Sender:sindi
 Receiver: ibrahim
-Subject: hallo
+Subject: test
 Message:
-dcjhavshja
+hey wie gehts.
