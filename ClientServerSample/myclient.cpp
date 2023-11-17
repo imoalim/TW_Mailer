@@ -327,6 +327,35 @@ int main(int argc, char **argv)
             }
          }
 
+         // Inside your main loop where you handle user commands
+if (strcmp(clientInput_array, "r") == 0 || strcmp(clientInput_array, "R") == 0) {
+    std::string username;
+    int messageNumber;
+
+    // Prompt the user for the username and the message number
+    std::cout << "Enter username: ";
+    std::getline(std::cin, username);
+
+    std::cout << "Enter message number: ";
+    std::cin >> messageNumber;
+    std::cin.ignore(); // To consume the newline character left in the buffer
+
+    // Format and send the command to the server
+    std::string command = "r\n" + username + "\n" + std::to_string(messageNumber) + "\n";
+    strcpy(buffer, command.c_str());
+    send(create_socket, buffer, strlen(buffer), 0);
+
+    // Receive the response from the server
+    size = recv(create_socket, buffer, BUF - 1, 0);
+    if (size > 0) {
+        buffer[size] = '\0';
+        std::cout << "Response: " << buffer << std::endl;
+    }
+}
+
+
+
+
          if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0)
          {
             // Senden Sie den "Quit"-Befehl an den Server
