@@ -188,18 +188,34 @@ int main(int argc, char **argv)
             clientInput_array[size - 1] = '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
          }
 
-         // printf("BUFFER: %s\n", buffer);
-         // Erstelle einen Dateinamen für den Benutzer
+         if (strcmp(clientInput_array, "Login") == 0)
+         {
+            inputs.push_back(std::string(clientInput_array));
+            std::string LDAPUsername;
+            std::string LDAPPassword;
+
+            std::cout << "LogIn\nEnterUsername: ";
+            std::getline(std::cin, LDAPUsername);
+            inputs.push_back(LDAPUsername);
+
+            std::cout << "\nEnterPassword: ";
+            std::getline(std::cin, LDAPPassword);
+            inputs.push_back(LDAPPassword);
+
+            std::string combinedString;
+            for (const auto &input : inputs)
+            {
+               combinedString += input + "\n";
+            }
+            // 'combinedString' in einen const char* umwandeln
+            strcpy(buffer, combinedString.c_str());
+            // memset(buffer, 0, sizeof(buffer[0])*BUF);
+         }
+         
 
          std::ofstream outputFile;
-         // printf("BUFFER: %s\n", buffer);
-         /*Hier ist der Ablauf im Client:
-
-   Der Client sendet den "Send"-Befehl an den Server.
-   Der Client wartet auf die Bestätigung vom Server.
-   Sobald die Bestätigung empfangen wurde, überprüft der Client, ob es sich um "OK" oder "FAIL" handelt.
-   Abhängig von der Bestätigung kann der Client entweder fortfahren und die Nachricht senden, wenn die Bestätigung "OK" ist, oder eine entsprechende Fehlerbehandlung durchführen, wenn die Bestätigung "FAIL" ist.*/
-         if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0)
+         
+      if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0)
          {
             inputs.push_back(std::string(clientInput_array));
 
@@ -296,8 +312,8 @@ int main(int argc, char **argv)
             // 'combinedString' in einen const char* umwandeln
             strcpy(buffer, combinedString.c_str());
             // memset(buffer, 0, sizeof(buffer[0])*BUF);
-            size_t SendBuffer_size = strlen(buffer);
-            send(create_socket, buffer, SendBuffer_size, 0);
+            //size_t SendBuffer_size = strlen(buffer);
+            //send(create_socket, buffer, SendBuffer_size, 0);
          }
          if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0)
          // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen

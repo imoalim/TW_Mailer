@@ -1,0 +1,6 @@
+Message Number: 1
+Sender:ibrahim
+Receiver: sindi
+Subject: hello
+Message:
+ich sage hallo zurück.
