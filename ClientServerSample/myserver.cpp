@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set> // Zum Überprüfen der Eindeutigkeit der Message Numbers
+#include <ldap.h> 
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -38,6 +39,12 @@ struct MessageInfo
    int messageNumber;
    std::string subject;
 };
+
+struct LDAPServer{
+   std::string Host = "ldap.technikum.wien.at";
+   int16_t Port = 389;
+   std::string SearchBase = "dc=technikum-wien,dc=at";
+}
 
 // Funktion zum Extrahieren von Nachrichteninformationen
 std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
@@ -356,11 +363,18 @@ void *clientCommunication(void *data)
       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
       std::string command = input[0];
+      bool loggedIn = false;
+      if(command == "Login"){
+         std::string LDAPUsername = input[1];
+         std::string LDAPPassword = input[2];
+         loggedIn = true;
+      }
 
       switch (command[0])
       {
       case 's':
       case 'S':
+      if(loggedIn) printf("logedIN");
       //TODO:: es geht beim send befehl zweimal hinein. FIX BUG
       {
          if (send(*current_socket, "OK", 3, 0) == -1)
