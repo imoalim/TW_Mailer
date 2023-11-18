@@ -19,6 +19,7 @@ CC=g++
 #           These are HP-UX specific flags.
 #############################################################################################
 CFLAGS=-g -Wall -Wextra -Werror -O -std=c++14 -pthread
+LDAP=-lldap -llber
 
 rebuild: clean all
 all: ./bin/server ./bin/client
@@ -31,10 +32,10 @@ clean:
 	${CC} ${CFLAGS} -o obj/myclient.o myclient.cpp -c
 
 ./obj/myserver.o: myserver.cpp
-	${CC} ${CFLAGS} -o obj/myserver.o myserver.cpp -c 
+	${CC} ${CFLAGS} -o obj/myserver.o myserver.cpp -c ${LDAP} 
 
 ./bin/server: ./obj/myserver.o
-	${CC} ${CFLAGS} -o bin/server obj/myserver.o
+	${CC} ${CFLAGS} -o bin/server obj/myserver.o ${LDAP} 
 
 ./bin/client: ./obj/myclient.o
 	${CC} ${CFLAGS} -o bin/client obj/myclient.o
