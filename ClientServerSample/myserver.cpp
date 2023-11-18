@@ -13,7 +13,8 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set> // Zum Überprüfen der Eindeutigkeit der Message Numbers
-#include <ldap.h> 
+#include <ldap.h>
+#include <algorithm>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -41,10 +42,112 @@ struct MessageInfo
    std::string body;
 };
 
-struct LDAPServer{
+struct LDAPServer
+{
    std::string Host = "ldap.technikum.wien.at";
    int16_t Port = 389;
    std::string SearchBase = "dc=technikum-wien,dc=at";
+   // anonymous bind with user and pw empty
+   const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+   const int ldapVersion = LDAP_VERSION3;
+   // read username (bash: export ldapuser=<yourUsername>)
+   char ldapBindUser[256];
+   char ldapBindPassword[256];
+   char rawLdapUser[128];
+};
+
+int ldap(const char *username, const char *password)
+{
+   ////////////////////////////////////////////////////////////////////////////
+   // LDAP config
+   struct LDAPServer ldapServer;
+
+   strcpy(ldapServer.rawLdapUser, username);
+   sprintf(ldapServer.ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", ldapServer.rawLdapUser);
+   printf("user set to: %s\n", ldapServer.ldapBindUser);
+
+   // read password (bash: export ldappw=<yourPW>)
+
+   strcpy(ldapServer.ldapBindPassword, password);
+
+   // search settings
+   // const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
+   // const char *ldapSearchFilter = "(uid=if19b00*)";
+   // ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
+   // const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
+
+   // general
+   int rc = 0; // return code
+
+   ////////////////////////////////////////////////////////////////////////////
+   // setup LDAP connection
+   // https://linux.die.net/man/3/ldap_initialize
+   LDAP *ldapHandle;
+   rc = ldap_initialize(&ldapHandle, ldapServer.ldapUri);
+   if (rc != LDAP_SUCCESS)
+   {
+      fprintf(stderr, "ldap_init failed\n");
+      return EXIT_FAILURE;
+   }
+   printf("connected to LDAP server %s\n", ldapServer.ldapUri);
+
+   ////////////////////////////////////////////////////////////////////////////
+   // set verison options
+   // https://linux.die.net/man/3/ldap_set_option
+   rc = ldap_set_option(
+       ldapHandle,
+       LDAP_OPT_PROTOCOL_VERSION, // OPTION
+       &ldapServer.ldapVersion);  // IN-Value
+   if (rc != LDAP_OPT_SUCCESS)
+   {
+      // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
+      fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return EXIT_FAILURE;
+   }
+
+   ////////////////////////////////////////////////////////////////////////////
+   // start connection secure (initialize TLS)
+   rc = ldap_start_tls_s(
+       ldapHandle,
+       NULL,
+       NULL);
+   if (rc != LDAP_SUCCESS)
+   {
+      fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return EXIT_FAILURE;
+   }
+
+   ////////////////////////////////////////////////////////////////////////////
+   // bind credentials
+
+   BerValue bindCredentials;
+   bindCredentials.bv_val = (char *)ldapServer.ldapBindPassword;
+   bindCredentials.bv_len = strlen(ldapServer.ldapBindPassword);
+   BerValue *servercredp; // server's credentials
+   rc = ldap_sasl_bind_s(
+       ldapHandle,
+       ldapServer.ldapBindUser,
+       LDAP_SASL_SIMPLE,
+       &bindCredentials,
+       NULL,
+       NULL,
+       &servercredp);
+   if (rc == LDAP_SUCCESS)
+   {
+      // Erfolgreich eingeloggt
+      printf("LDAP bind successful\n");
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return true;
+   }
+   else
+   {
+      // Fehlgeschlagenes Einloggen
+      fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return false;
+   }
 }
 
 // Funktion zum Extrahieren von Nachrichteninformationen
@@ -182,6 +285,28 @@ struct InputSplitter
       return result;
    }
 };
+
+enum ValidCommand
+{
+    LIST,
+    SEND,
+    LOGIN,
+    READ,
+    QUIT
+};
+
+bool checkCommand(const std::string &command)
+{
+    // Gültige Befehle als Vektor von Strings
+    std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
+
+    // Umwandlung des Eingabebefehls zu Kleinbuchstaben
+    std::string lowercaseCommand = command;
+    std::transform(lowercaseCommand.begin(), lowercaseCommand.end(), lowercaseCommand.begin(), ::tolower);
+
+    // Überprüfung, ob der Befehl in den gültigen Befehlen enthalten ist
+    return std::find(validCommands.begin(), validCommands.end(), lowercaseCommand) != validCommands.end();
+}
 
 int main(void)
 {
@@ -368,43 +493,57 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
-      // TODO:: falls OK nicht InputSplittre aufrufen
+     
 
       // bearbeite den Input
       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
       std::string command = input[0];
+       
       bool loggedIn = false;
-      if(command == "Login"){
-         std::string LDAPUsername = input[1];
-         std::string LDAPPassword = input[2];
-         loggedIn = true;
-      }
 
-      switch (command[0])
+      if(checkCommand(command)){
+if (command == "Login")
       {
-      case 's':
-      case 'S':
-      if(loggedIn) printf("logedIN");
-      //TODO:: es geht beim send befehl zweimal hinein. FIX BUG
-      {
-         if (send(*current_socket, "OK", 3, 0) == -1)
+         std::string LDAPUsername = input[1].substr(0, 9);   // Begrenzt auf die ersten 9 Zeichen
+         std::string LDAPPassword = input[2].substr(0, BUF); // Begrenzt auf die ersten BUF Zeichen
+
+         if (ldap(LDAPUsername.c_str(), LDAPPassword.c_str()))
          {
-            send(*current_socket, "FAIL", 5, 0);
-            perror("Fehler beim Senden der Bestätigung an den Client");
+            loggedIn = true;
+            printf("Benutzer %s ist eingeloggt.\n", LDAPUsername.c_str());
          }
          else
          {
-            printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
-
-            send(*current_socket, "OK", 3, 0);
+            perror("LDAP-Fehler");
          }
-         // Falls ein Fehler auftritt:
-         // send(create_socket, "FAIL", 4, 0);
-         break;
       }
-      case 'l':
-      case 'L':
+
+      if (command == "Send" || command == "send")
+      {
+         if (loggedIn)
+         {
+            printf("logedIN");
+            // TODO:: es geht beim send befehl zweimal hinein. FIX BUG
+            {
+               if (send(*current_socket, "OK", 3, 0) == -1)
+               {
+                  send(*current_socket, "FAIL", 5, 0);
+                  perror("Fehler beim Senden der Bestätigung an den Client");
+               }
+               else
+               {
+                  printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+
+                  send(*current_socket, "OK", 3, 0);
+               }
+               // Falls ein Fehler auftritt:
+               // send(create_socket, "FAIL", 4, 0);
+            }
+         }
+      }
+
+      if (command == "List" || command == "list")
       {
          char username[BUF];
          strcpy(username, input[1].c_str());
@@ -600,12 +739,13 @@ void *clientCommunication(void *data)
       case 'Q':
          // Senden Sie den "Quit"-Befehl an den Server
          printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
-         break;
-
-      default:
-         printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
-         break;
       }
+      }
+      else
+      {
+         printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
+      }
+
       if (send(*current_socket, "OK", 3, 0) == -1)
       {
          if (send(*current_socket, "OK", 3, 0) == -1)
