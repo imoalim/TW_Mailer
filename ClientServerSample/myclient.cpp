@@ -171,13 +171,13 @@ int main(int argc, char **argv)
       printf(">> If you want to logout the client, type 'Quit'\n");
       char clientInput_array[BUF]; // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
       clientInput_array[0] = '\0'; // Initialisiere mit einem leeren String
-
-      // str to char array
-      strcpy(clientInput_array, clientInput.c_str());
       std::vector<std::string> inputs;
-      // Um das Array zu leeren
+
+      // buffer auf null setzten und clientInputarray
+      //  Um das Array zu leeren
       memset(clientInput_array, 0, sizeof(clientInput_array[0]) * BUF);
       memset(buffer, 0, sizeof(buffer[0]) * BUF);
+
       if (fgets(clientInput_array, BUF, stdin) != NULL)
       {
          int size = strlen(clientInput_array);
@@ -188,18 +188,18 @@ int main(int argc, char **argv)
             clientInput_array[size - 1] = '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
          }
 
-         if (strcmp(clientInput_array, "Login") == 0)
+         if (strcmp(clientInput_array, "Login") == 0 || strcmp(clientInput_array, "login") == 0)
          {
             inputs.push_back(std::string(clientInput_array));
-            std::string LDAPUsername;
-            std::string LDAPPassword;
+            char LDAPUsername[9];
+            char LDAPPassword[BUF];
 
-            std::cout << "LogIn\nEnterUsername: ";
-            std::getline(std::cin, LDAPUsername);
+            std::cout << "LogIn\nEnterUsername (max 8 characters): ";
+            std::cin >> LDAPUsername;
             inputs.push_back(LDAPUsername);
 
             std::cout << "\nEnterPassword: ";
-            std::getline(std::cin, LDAPPassword);
+            std::cin >> LDAPPassword;
             inputs.push_back(LDAPPassword);
 
             std::string combinedString;
@@ -209,13 +209,20 @@ int main(int argc, char **argv)
             }
             // 'combinedString' in einen const char* umwandeln
             strcpy(buffer, combinedString.c_str());
+            if ((send(create_socket, buffer, strlen(buffer), 0)) == -1)
+            {
+               perror("send error");
+               break;
+            }
+
+            //(gdb) p buffe
+            //$8 = "Login\nif22b252\nYusra2010\n", '\000' <repeats 998 times>
             // memset(buffer, 0, sizeof(buffer[0])*BUF);
          }
-         
 
          std::ofstream outputFile;
-         
-      if (strcmp(clientInput_array, "S") == 0 || strcmp(clientInput_array, "s") == 0)
+
+         if (strcmp(clientInput_array, "Send") == 0 || strcmp(clientInput_array, "send") == 0)
          {
             inputs.push_back(std::string(clientInput_array));
 
@@ -312,10 +319,10 @@ int main(int argc, char **argv)
             // 'combinedString' in einen const char* umwandeln
             strcpy(buffer, combinedString.c_str());
             // memset(buffer, 0, sizeof(buffer[0])*BUF);
-            //size_t SendBuffer_size = strlen(buffer);
-            //send(create_socket, buffer, SendBuffer_size, 0);
+            // size_t SendBuffer_size = strlen(buffer);
+            // send(create_socket, buffer, SendBuffer_size, 0);
          }
-         if (strcmp(clientInput_array, "L") == 0 || strcmp(clientInput_array, "l") == 0)
+         if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
          // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
          {
             inputs.push_back(std::string(clientInput_array));
@@ -361,7 +368,7 @@ int main(int argc, char **argv)
             }
          }
 
-         if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0)
+         if (strcmp(buffer, "Quit") == 0 || strcmp(buffer, "quit") == 0)
          {
             // Senden Sie den "Quit"-Befehl an den Server
             send(create_socket, buffer, size, 0);
