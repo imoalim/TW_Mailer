@@ -488,8 +488,6 @@ void *clientCommunication(void *data)
 
       std::string command = input[0];
 
-      
-
       if (checkCommand(command))
       {
 
@@ -509,7 +507,7 @@ void *clientCommunication(void *data)
                {
                   send(*current_socket, ldapServer.LDAPUsername.c_str(), strlen(ldapServer.LDAPUsername.c_str()), 0);
 
-                 ldapServer.loggedIn = true;
+                  ldapServer.loggedIn = true;
                   printf("Benutzer %s ist eingeloggt.\n", ldapServer.LDAPUsername.c_str());
                }
                else
@@ -560,7 +558,7 @@ void *clientCommunication(void *data)
                   perror("Unable to open messages directory");
                   return NULL;
                }
-               //TODO:: if filepath is not found send error.
+               // TODO:: if filepath is not found send error.
 
                // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
                while ((entry = readdir(dir)) != NULL)
