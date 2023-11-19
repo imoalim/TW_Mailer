@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/root/TW_Mailer-2/ClientServerSample",
-      "program": "/root/TW_Mailer-2/ClientServerSample/build/Debug/outDebug",
+      "cwd": "/root/TW_Mailer-4/ClientServerSample",
+      "program": "/root/TW_Mailer-4/ClientServerSample/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
