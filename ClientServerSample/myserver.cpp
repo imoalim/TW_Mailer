@@ -13,6 +13,8 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set> // Zum Überprüfen der Eindeutigkeit der Message Numbers
+#include <ldap.h>
+#include <algorithm>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -39,7 +41,117 @@ struct MessageInfo
    std::string subject;
 };
 
-// Funktion zum Extrahieren von Nachrichteninformationen
+struct LDAPServer
+{
+   std::string Host = "ldap.technikum.wien.at";
+   int16_t Port = 389;
+   std::string SearchBase = "dc=technikum-wien,dc=at";
+   // anonymous bind with user and pw empty
+   const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+   const int ldapVersion = LDAP_VERSION3;
+   // read username (bash: export ldapuser=<yourUsername>)
+   char ldapBindUser[256];
+   char ldapBindPassword[256];
+   char rawLdapUser[128];
+   std::string LDAPUsername;
+   std::string LDAPPassword;
+   bool loggedIn = false;
+};
+
+int ldap(const char *username, const char *password)
+{
+   ////////////////////////////////////////////////////////////////////////////
+   // LDAP config
+   struct LDAPServer ldapServer;
+
+   strcpy(ldapServer.rawLdapUser, username);
+   sprintf(ldapServer.ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", ldapServer.rawLdapUser);
+   printf("user set to: %s\n", ldapServer.ldapBindUser);
+
+   // read password (bash: export ldappw=<yourPW>)
+
+   strcpy(ldapServer.ldapBindPassword, password);
+
+   // search settings
+   // const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
+   // const char *ldapSearchFilter = "(uid=if19b00*)";
+   // ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
+   // const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
+
+   // general
+   int rc = 0; // return code
+
+   ////////////////////////////////////////////////////////////////////////////
+   // setup LDAP connection
+   // https://linux.die.net/man/3/ldap_initialize
+   LDAP *ldapHandle;
+   rc = ldap_initialize(&ldapHandle, ldapServer.ldapUri);
+   if (rc != LDAP_SUCCESS)
+   {
+      fprintf(stderr, "ldap_init failed\n");
+      return EXIT_FAILURE;
+   }
+   printf("connected to LDAP server %s\n", ldapServer.ldapUri);
+
+   ////////////////////////////////////////////////////////////////////////////
+   // set verison options
+   // https://linux.die.net/man/3/ldap_set_option
+   rc = ldap_set_option(
+       ldapHandle,
+       LDAP_OPT_PROTOCOL_VERSION, // OPTION
+       &ldapServer.ldapVersion);  // IN-Value
+   if (rc != LDAP_OPT_SUCCESS)
+   {
+      // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
+      fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return EXIT_FAILURE;
+   }
+
+   ////////////////////////////////////////////////////////////////////////////
+   // start connection secure (initialize TLS)
+   rc = ldap_start_tls_s(
+       ldapHandle,
+       NULL,
+       NULL);
+   if (rc != LDAP_SUCCESS)
+   {
+      fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return EXIT_FAILURE;
+   }
+
+   ////////////////////////////////////////////////////////////////////////////
+   // bind credentials
+
+   BerValue bindCredentials;
+   bindCredentials.bv_val = (char *)ldapServer.ldapBindPassword;
+   bindCredentials.bv_len = strlen(ldapServer.ldapBindPassword);
+   BerValue *servercredp; // server's credentials
+   rc = ldap_sasl_bind_s(
+       ldapHandle,
+       ldapServer.ldapBindUser,
+       LDAP_SASL_SIMPLE,
+       &bindCredentials,
+       NULL,
+       NULL,
+       &servercredp);
+   if (rc == LDAP_SUCCESS)
+   {
+      // Erfolgreich eingeloggt
+      printf("LDAP bind successful\n");
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return true;
+   }
+   else
+   {
+      // Fehlgeschlagenes Einloggen
+      fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
+      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+      return false;
+   }
+}
+
 std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
 {
    std::ifstream file(filepath);
@@ -81,14 +193,11 @@ std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
             messages.push_back({currentMessageNumber, subject});
          }
       }
-
-      file.close();
    }
    else
    {
       std::cerr << "Unable to open file: " << filepath << std::endl;
    }
-
    return messages;
 }
 
@@ -164,6 +273,28 @@ struct InputSplitter
       return result;
    }
 };
+
+enum ValidCommand
+{
+   LIST,
+   SEND,
+   LOGIN,
+   READ,
+   QUIT
+};
+
+bool checkCommand(const std::string &command)
+{
+   // Gültige Befehle als Vektor von Strings
+   std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
+
+   // Umwandlung des Eingabebefehls zu Kleinbuchstaben
+   std::string lowercaseCommand = command;
+   std::transform(lowercaseCommand.begin(), lowercaseCommand.end(), lowercaseCommand.begin(), ::tolower);
+
+   // Überprüfung, ob der Befehl in den gültigen Befehlen enthalten ist
+   return std::find(validCommands.begin(), validCommands.end(), lowercaseCommand) != validCommands.end();
+}
 
 int main(void)
 {
@@ -301,6 +432,7 @@ void *clientCommunication(void *data)
    char buffer[BUF];
    int size;
    int *current_socket = (int *)data;
+   struct LDAPServer ldapServer;
 
    ////////////////////////////////////////////////////////////////////////////
    // SEND welcome message
@@ -350,119 +482,148 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
-      // TODO:: falls OK nicht InputSplittre aufrufen
 
       // bearbeite den Input
       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
       std::string command = input[0];
 
-      switch (command[0])
+      if (checkCommand(command))
       {
-      case 's':
-      case 'S':
-      //TODO:: es geht beim send befehl zweimal hinein. FIX BUG
-      {
-         if (send(*current_socket, "OK", 3, 0) == -1)
+
+         if (command == "Login" || command == "login")
          {
-            send(*current_socket, "FAIL", 5, 0);
-            perror("Fehler beim Senden der Bestätigung an den Client");
-         }
-         else
-         {
-            printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
-
-            send(*current_socket, "OK", 3, 0);
-         }
-         // Falls ein Fehler auftritt:
-         // send(create_socket, "FAIL", 4, 0);
-         break;
-      }
-      case 'l':
-      case 'L':
-      {
-         char username[BUF];
-         strcpy(username, input[1].c_str());
-
-         // Nachrichteninformationen extrahieren
-         int totalMessages = 0;
-         std::vector<std::string> allSubjects;
-
-         DIR *dir;
-         struct dirent *entry;
-
-         dir = opendir("messages");
-         if (dir == NULL)
-         {
-            perror("Unable to open messages directory");
-            return NULL;
-         }
-
-         // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
-         while ((entry = readdir(dir)) != NULL)
-         {
-            if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+            ldapServer.LDAPUsername = input[1].substr(0, 9);   // Begrenzt auf die ersten 9 Zeichen
+            ldapServer.LDAPPassword = input[2].substr(0, BUF); // Begrenzt auf die ersten BUF Zeichen
+            if (ldap(ldapServer.LDAPUsername.c_str(), ldapServer.LDAPPassword.c_str()))
             {
-               std::string filepath = "messages/" + std::string(entry->d_name);
+               send(*current_socket, "loggedIn", 9, 0);
 
-               // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
-               if (access(filepath.c_str(), F_OK) != -1)
+               // Warte auf die Bestätigung, dass der Benutzer eingeloggt ist
+               char serverResponse[BUF];
+               recv(*current_socket, serverResponse, sizeof(serverResponse), 0);
+
+               if (strcmp(serverResponse, "OK") == 0)
                {
-                  // Hier speicherst du die zurückgegebenen Informationen
-                  std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
+                  send(*current_socket, ldapServer.LDAPUsername.c_str(), strlen(ldapServer.LDAPUsername.c_str()), 0);
 
-                  int messageCount = messageInfo.size();
-                  std::vector<std::string> subjects;
-
-                  // Hier fügst du die Betreffzeilen zur allSubjects hinzu
-                  for (const auto &info : messageInfo)
-                  {
-                     subjects.push_back(info.subject);
-                  }
-
-                  totalMessages += messageCount;
-                  allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
+                  ldapServer.loggedIn = true;
+                  printf("Benutzer %s ist eingeloggt.\n", ldapServer.LDAPUsername.c_str());
                }
                else
                {
-                  std::cerr << "File does not exist: " << filepath << std::endl;
-                  // Sende eine Fehlermeldung an den Client
-                  send(*current_socket, "FAIL: File does not exist", 26, 0);
+                  send(*current_socket, "FAIL", 5, 0);
+                  perror("\nLDAP-Fehler");
+               }
+            }
+         }
+         if (ldapServer.loggedIn)
+         {
+            if (command == "Send" || command == "send")
+            {
+               printf("logedIN");
+               // TODO:: es geht beim send befehl zweimal hinein. FIX BUG
+               {
+                  if (send(*current_socket, "OK", 3, 0) == -1)
+                  {
+                     send(*current_socket, "FAIL", 5, 0);
+                     perror("Fehler beim Senden der Bestätigung an den Client");
+                  }
+                  else
+                  {
+                     printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
+
+                     send(*current_socket, "OK", 3, 0);
+                  }
+                  // Falls ein Fehler auftritt:
+                  // send(create_socket, "FAIL", 4, 0);
+               }
+            }
+
+            if (command == "List" || command == "list")
+            {
+               char username[BUF];
+               strcpy(username, input[1].c_str());
+
+               // Nachrichteninformationen extrahieren
+               int totalMessages = 0;
+               std::vector<std::string> allSubjects;
+
+               DIR *dir;
+               struct dirent *entry;
+
+               dir = opendir("messages");
+               if (dir == NULL)
+               {
+                  perror("Unable to open messages directory");
+                  return NULL;
+               }
+               // TODO:: if filepath is not found send error.
+
+               // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
+               while ((entry = readdir(dir)) != NULL)
+               {
+                  if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+                  {
+                     std::string filepath = "messages/" + std::string(entry->d_name);
+
+                     // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
+                     if (access(filepath.c_str(), F_OK) != -1)
+                     {
+                        // Hier speicherst du die zurückgegebenen Informationen
+                        std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
+
+                        int messageCount = messageInfo.size();
+                        std::vector<std::string> subjects;
+
+                        // Hier fügst du die Betreffzeilen zur allSubjects hinzu
+                        for (const auto &info : messageInfo)
+                        {
+                           subjects.push_back(info.subject);
+                        }
+
+                        totalMessages += messageCount;
+                        allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
+                     }
+                     else
+                     {
+                        std::cerr << "File does not exist: " << filepath << std::endl;
+                        // Sende eine Fehlermeldung an den Client
+                        send(*current_socket, "FAIL: File does not exist", 26, 0);
+                        return NULL;
+                     }
+                  }
+               }
+               closedir(dir);
+
+               // Zeige die Nachrichteninformationen auf der Serverkonsole an
+               printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
+               printf("Betreff der Nachrichten:\n");
+
+               for (const auto &subject : allSubjects)
+               {
+                  printf("%s\n", subject.c_str());
+               }
+
+               // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
+               if (send(*current_socket, "OK", 3, 0) == -1)
+               {
+                  perror("send OK failed");
                   return NULL;
                }
             }
          }
-         closedir(dir);
-
-         // Zeige die Nachrichteninformationen auf der Serverkonsole an
-         printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
-         printf("Betreff der Nachrichten:\n");
-
-         for (const auto &subject : allSubjects)
+         if (command == "Quit" || command == "quit")
          {
-            printf("%s\n", subject.c_str());
+            // Senden Sie den "Quit"-Befehl an den Server
+            printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
          }
-
-         // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
-         if (send(*current_socket, "OK", 3, 0) == -1)
-         {
-            perror("send OK failed");
-            return NULL;
-         }
-
-         break;
       }
-
-      case 'q':
-      case 'Q':
-         // Senden Sie den "Quit"-Befehl an den Server
-         printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
-         break;
-
-      default:
+      else
+      {
          printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
-         break;
       }
+
       if (send(*current_socket, "OK", 3, 0) == -1)
       {
          if (send(*current_socket, "OK", 3, 0) == -1)
