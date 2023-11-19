@@ -55,6 +55,7 @@ struct LDAPServer
    char rawLdapUser[128];
    std::string LDAPUsername;
    std::string LDAPPassword;
+   bool loggedIn = false;
 };
 
 int ldap(const char *username, const char *password)
@@ -151,7 +152,6 @@ int ldap(const char *username, const char *password)
    }
 }
 
-// Funktion zum Extrahieren von Nachrichteninformationen
 std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
 {
    std::ifstream file(filepath);
@@ -193,14 +193,11 @@ std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
             messages.push_back({currentMessageNumber, subject});
          }
       }
-
-      file.close();
    }
    else
    {
       std::cerr << "Unable to open file: " << filepath << std::endl;
    }
-
    return messages;
 }
 
@@ -491,7 +488,7 @@ void *clientCommunication(void *data)
 
       std::string command = input[0];
 
-      bool loggedIn = false;
+      
 
       if (checkCommand(command))
       {
@@ -512,7 +509,7 @@ void *clientCommunication(void *data)
                {
                   send(*current_socket, ldapServer.LDAPUsername.c_str(), strlen(ldapServer.LDAPUsername.c_str()), 0);
 
-                  loggedIn = true;
+                 ldapServer.loggedIn = true;
                   printf("Benutzer %s ist eingeloggt.\n", ldapServer.LDAPUsername.c_str());
                }
                else
@@ -522,7 +519,7 @@ void *clientCommunication(void *data)
                }
             }
          }
-         if (loggedIn)
+         if (ldapServer.loggedIn)
          {
             if (command == "Send" || command == "send")
             {
@@ -563,6 +560,7 @@ void *clientCommunication(void *data)
                   perror("Unable to open messages directory");
                   return NULL;
                }
+               //TODO:: if filepath is not found send error.
 
                // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
                while ((entry = readdir(dir)) != NULL)
