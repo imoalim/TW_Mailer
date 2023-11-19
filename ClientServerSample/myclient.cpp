@@ -403,107 +403,99 @@ int main(int argc, char **argv)
                   break;
                }
 
-            // Receive the list of messages from the server
-            size = recv(create_socket, buffer, BUF - 1, 0);
-            if (size == -1)
-            {
-               perror("recv error");
-               break;
+               // Receive the list of messages from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size == -1)
+               {
+                  perror("recv error");
+                  break;
+               }
+               else if (size == 0)
+               {
+                  printf("Server closed remote socket\n");
+                  break;
+               }
+               else
+               {
+                  buffer[size] = '\0';
+                  // printf("Received list of messages:\n%s\n", buffer);
+                  // send(create_socket, "OK", 3, 0);
+               }
             }
-            else if (size == 0)
+
+            // Inside your main loop where you handle user commands
+            if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0)
             {
-               printf("Server closed remote socket\n");
-               break;
+               std::string username;
+               int messageNumber;
+
+               std::cout << "Enter username: ";
+               std::getline(std::cin, username);
+
+               std::cout << "Enter message number to read: ";
+               std::cin >> messageNumber;
+               std::cin.ignore(); // To consume the newline character left in the buffer
+
+               // Format and send the read command to the server
+               std::string readCommand = "READ\n" + username + "\n" + std::to_string(messageNumber) + "\n";
+               strcpy(buffer, readCommand.c_str());
+               send(create_socket, buffer, strlen(buffer), 0);
+
+               // Receive response from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size > 0)
+               {
+                  buffer[size] = '\0';
+                  // std::cout << "Received message:\n" << buffer << std::endl;
+               }
+               else if (size == 0)
+               {
+                  std::cout << "Server closed the connection.\n";
+               }
+               else
+               {
+                  perror("recv error");
+               }
             }
-            else
+
+            // ... [Rest of the code]
+
+            if (strcmp(clientInput_array, "D") == 0 || strcmp(clientInput_array, "d") == 0)
             {
-               buffer[size] = '\0';
-               // printf("Received list of messages:\n%s\n", buffer);
-               // send(create_socket, "OK", 3, 0);
+               std::string username;
+               int messageNumber;
+
+               std::cout << "Enter username: ";
+               std::getline(std::cin, username);
+
+               std::cout << "Enter message number to delete: ";
+               std::cin >> messageNumber;
+               std::cin.ignore(); // To consume the newline character left in the buffer
+
+               // Format and send the delete command to the server
+               std::string deleteCommand = "DEL\n" + username + "\n" + std::to_string(messageNumber) + "\n";
+               strcpy(buffer, deleteCommand.c_str());
+               send(create_socket, buffer, strlen(buffer), 0);
+
+               // Receive response from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size > 0)
+               {
+                  buffer[size] = '\0';
+                  if (strcmp(buffer, "OK\n") == 0)
+                  {
+                     std::cout << "Message deleted successfully for user " << username << "." << std::endl;
+                  }
+                  else
+                  {
+                     std::cout << "Error deleting message for user " << username << "." << std::endl;
+                  }
+               }
             }
-         }
 
-         // Inside your main loop where you handle user commands
-if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0) {
-    std::string username;
-    int messageNumber;
+            // ... [Previous code]
 
-    // Prompt the user for the username and the message number
-    std::cout << "Enter username: ";
-    std::getline(std::cin, username);
-    std::cout << "Enter message number: ";
-    std::cin >> messageNumber;
-    std::cin.ignore(); // To consume the newline character left in the buffer
-
-    // Format and send the command to the server
-    std::string command = "R\n" + username + "\n" + std::to_string(messageNumber) + "\n";
-    strcpy(buffer, command.c_str());
-    send(create_socket, buffer, strlen(buffer), 0);
-
-    // Initialize a string to hold the entire message
-    std::string fullMessage;
-
-    // Keep receiving until the server stops sending
-    do {
-        memset(buffer, 0, BUF); // Clear the buffer
-        size = recv(create_socket, buffer, BUF - 1, 0);
-        if (size > 0) {
-            buffer[size] = '\0'; // Null-terminate the received data
-            fullMessage += buffer; // Append the received data to the full message
-        }
-    } while (size > 0);
-
-    // Check if we received anything
-    if (!fullMessage.empty()) {
-        std::cout << "Full Message:\n" << fullMessage << std::endl;
-    } else {
-        std::cerr << "No message received or connection closed by server." << std::endl;
-    }
-}
-
-// ... [rest of the code]
-
-// ... In the main loop of the client ...
-
-if (strcmp(clientInput_array, "D") == 0 || strcmp(clientInput_array, "d") == 0) {
-    std::string username;
-    int messageNumber;
-
-    std::cout << "Enter username: ";
-    std::getline(std::cin, username);
-
-    std::cout << "Enter message number to delete: ";
-    std::cin >> messageNumber;
-    std::cin.ignore(); // To consume the newline character left in the buffer
-
-    // Format and send the delete command to the server
-    std::string deleteCommand = "DEL\n" + username + "\n" + std::to_string(messageNumber) + "\n";
-    strcpy(buffer, deleteCommand.c_str());
-    send(create_socket, buffer, strlen(buffer), 0);
-
-    // Receive response from the server
-    size = recv(create_socket, buffer, BUF - 1, 0);
-    if (size > 0) {
-        buffer[size] = '\0';
-        if (strcmp(buffer, "OK\n") == 0) {
-            std::cout << "Message deleted successfully for user " << username << "." << std::endl;
-        } else {
-            std::cout << "Error deleting message for user " << username << "." << std::endl;
-        }
-    }
-}
-
-
-// ...
-
-
-
-
-
-
-         // ... [Previous code]
-
-         if (strcmp(clientInput_array, "R") == 0 || strcmp(clientInput_array, "r") == 0)
+         if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0)
          {
             std::string username;
             int messageNumber;
@@ -573,45 +565,47 @@ if (strcmp(clientInput_array, "D") == 0 || strcmp(clientInput_array, "d") == 0) 
          }
 
          if (strcmp(buffer, "Q") == 0 || strcmp(buffer, "q") == 0)
-         {
-            // Senden Sie den "Quit"-Befehl an den Server
-            send(create_socket, buffer, size, 0);
-            // printf("testBUFFER: %s\n", buffer);
-            //  Schließen Sie die Verbindung auf der Client-Seite
-            if (shutdown(create_socket, SHUT_RDWR) == -1)
             {
-               perror("shutdown create_socket");
-            }
-            if (close(create_socket) == -1)
-            {
-               perror("close create_socket");
-            }
-            create_socket = -1;
+               // Senden Sie den "Quit"-Befehl an den Server
+               send(create_socket, buffer, size, 0);
+               // printf("testBUFFER: %s\n", buffer);
+               //  Schließen Sie die Verbindung auf der Client-Seite
+               if (shutdown(create_socket, SHUT_RDWR) == -1)
+               {
+                  perror("shutdown create_socket");
+               }
+               if (close(create_socket) == -1)
+               {
+                  perror("close create_socket");
+               }
+               create_socket = -1;
 
-            // Beenden Sie das Programm
-            break;
+               // Beenden Sie das Programm
+               break;
+            }
+            //////////////////////////////////////////////////////////////////////
+            // printf("BUFFER: %s\n", buffer);
+            //  printf("BUFFER: %s\n", buffer);
          }
-         //////////////////////////////////////////////////////////////////////
-         // printf("BUFFER: %s\n", buffer);
-         //  printf("BUFFER: %s\n", buffer);
       }
-   } while (strcmp(buffer, "quit") != 0 || !isQuit);
+      while (strcmp(buffer, "quit") != 0 || !isQuit)
+         ;
 
-   ////////////////////////////////////////////////////////////////////////////
-   // CLOSES THE DESCRIPTOR
-   if (create_socket != -1)
-   {
-      if (shutdown(create_socket, SHUT_RDWR) == -1)
+      ////////////////////////////////////////////////////////////////////////////
+      // CLOSES THE DESCRIPTOR
+      if (create_socket != -1)
       {
-         // invalid in case the server is gone already
-         perror("shutdown create_socket");
+         if (shutdown(create_socket, SHUT_RDWR) == -1)
+         {
+            // invalid in case the server is gone already
+            perror("shutdown create_socket");
+         }
+         if (close(create_socket) == -1)
+         {
+            perror("close create_socket");
+         }
+         create_socket = -1;
       }
-      if (close(create_socket) == -1)
-      {
-         perror("close create_socket");
-      }
-      create_socket = -1;
+
+      return EXIT_SUCCESS;
    }
-
-   return EXIT_SUCCESS;
-}

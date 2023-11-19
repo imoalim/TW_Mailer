@@ -621,115 +621,132 @@ void *clientCommunication(void *data)
                   printf("%s\n", subject.c_str());
                }
 
-               // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
-               if (send(*current_socket, "OK", 3, 0) == -1)
-               {
-                  perror("send OK failed");
-                  return NULL;
-               }
+         // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
+         if (send(*current_socket, "OK", 3, 0) == -1)
+         {
+            perror("send OK failed");
+            return NULL;
+         }
+
+         break;
+      }
+
+         // ... [previous code]
+
+     if (command == "Read" || command == "read")
+      {
+         std::string username = input[1];
+         int messageNumber = std::stoi(input[2]);
+         std::string filename = "messages/" + username + "_messages.txt";
+         std::cout << "Looking for message: " << messageNumber << " for user: " << username << std::endl;
+
+         std::vector<MessageInfo> messages = extractMessageInfo(filename);
+         bool messageFound = false;
+         std::string fullMessage;
+
+         for (const auto &message : messages)
+         {
+            if (message.messageNumber == messageNumber)
+            {
+               fullMessage = "Subject: " + message.subject + "\n" + "Message:\n" + message.body;
+               messageFound = true;
+               // Print the message to the server console
+               std::cout << "Message found:\n"
+                         << fullMessage << std::endl;
+               break;
             }
          }
-   
-if (command == "Read" || command == "read"){
-        // Assuming the username is the second string in the input vector
-        // and the message number is the third
-        std::string username = input[1];
-        int messageNumber = std::stoi(input[2]);
 
-        // Construct the filename based on the username
-        std::string filename = "messages/" + username + "_messages.txt";
-
-    std::ifstream inputFile(filename);
-    if (!inputFile.is_open()) {
-        std::string errorMsg = "ERROR: Unable to open message file.";
-        send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
-        break;
-    }
-
-    std::string line, messageContent;
-    bool messageFound = false;
-    bool isReadingMessage = false; // Indicates if we are currently reading the desired message
-
-    // Read the file line by line
-    while (std::getline(inputFile, line)) {
-        if (line.substr(0, 16) == "Message Number: ") {
-            int currentMessageNumber = std::stoi(line.substr(16));
-            if (currentMessageNumber == messageNumber) {
-                messageFound = true;
-                isReadingMessage = true; // Start reading the message
-                messageContent += line + '\n'; // Include the "Message Number" line
-                continue;
-            } else {
-                isReadingMessage = false; // Stop reading if we reach a new message
+         if (messageFound)
+         {
+            // Send the message in chunks if it's too large
+            size_t bytesSent = 0;
+            while (bytesSent < fullMessage.length())
+            {
+               ssize_t result = send(*current_socket,
+                                     fullMessage.c_str() + bytesSent,
+                                     std::min(fullMessage.length() - bytesSent, static_cast<size_t>(BUF - 1)),
+                                     0);
+               if (result == -1)
+               {
+                  perror("send error");
+                  break;
+               }
+               bytesSent += result;
             }
-        }
+         }
+         else
+         {
+            std::string errorMsg = "ERROR: Message not found.\n";
+            // ... [previous code]
+            send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
+         }
 
-        if (isReadingMessage) {
-            messageContent += line + '\n'; // Append line to message content
-        }
-    }
+         // Send an OK message or some acknowledgment to the client after processing
+         const char *ackMessage = "END OF MESSAGE\n";
+         send(*current_socket, ackMessage, strlen(ackMessage), 0);
 
-    inputFile.close();
+         break;
+      }
 
-    if (messageFound) {
-        // Send the entire message content to the client
-        send(*current_socket, messageContent.c_str(), messageContent.length(), 0);
-    } else {
-        // Send an error message if the message wasn't found
-        std::string errorMsg = "ERROR: Message not found.";
-        send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
-    }
-    break;
-}
+         // ... Inside the clientCommunication function ...
 
-// ... [rest of the code]
-// ... Inside the clientCommunication function ...
+      case 'd':
+      case 'D':
+      {
+         std::string username = input[1]; // assuming username is also sent
+         int messageNumberToDelete = std::stoi(input[2]);
 
-case 'd':
-case 'D': {
-    std::string username = input[1]; // assuming username is also sent
-    int messageNumberToDelete = std::stoi(input[2]);
+         std::string filePath = "messages/" + username + "_messages.txt";
+         std::ifstream inputFile(filePath);
+         std::ofstream tempFile("messages/temp.txt");
+         std::string line;
+         bool isDeleted = false;
 
-    std::string filePath = "messages/" + username + "_messages.txt";
-    std::ifstream inputFile(filePath);
-    std::ofstream tempFile("messages/temp.txt");
-    std::string line;
-    bool isDeleted = false;
-
-    if (inputFile.is_open() && tempFile.is_open()) {
-        while (getline(inputFile, line)) {
-            // Parse and check if the line contains the message number to be deleted
-            if (line.substr(0, 16) == "Message Number: " &&
-                std::stoi(line.substr(16)) == messageNumberToDelete) {
-                isDeleted = true;
-                // Skip this message
-                while (getline(inputFile, line) && !line.empty()) {
-                    // Skip lines until an empty line (end of message)
-                }
-            } else {
-                // Write other messages to temp file
-                tempFile << line << '\n';
+         if (inputFile.is_open() && tempFile.is_open())
+         {
+            while (getline(inputFile, line))
+            {
+               // Parse and check if the line contains the message number to be deleted
+               if (line.substr(0, 16) == "Message Number: " &&
+                   std::stoi(line.substr(16)) == messageNumberToDelete)
+               {
+                  isDeleted = true;
+                  // Skip this message
+                  while (getline(inputFile, line) && !line.empty())
+                  {
+                     // Skip lines until an empty line (end of message)
+                  }
+               }
+               else
+               {
+                  // Write other messages to temp file
+                  tempFile << line << '\n';
+               }
             }
-        }
-        inputFile.close();
-        tempFile.close();
+            inputFile.close();
+            tempFile.close();
 
-        // Replace old file with new one
-        remove(filePath.c_str());
-        rename("messages/temp.txt", filePath.c_str());
+            // Replace old file with new one
+            remove(filePath.c_str());
+            rename("messages/temp.txt", filePath.c_str());
 
-        if (isDeleted) {
-            send(*current_socket, "OK\n", 4, 0);
-        } else {
+            if (isDeleted)
+            {
+               send(*current_socket, "OK\n", 4, 0);
+            }
+            else
+            {
+               send(*current_socket, "ERR\n", 5, 0);
+            }
+         }
+         else
+         {
             send(*current_socket, "ERR\n", 5, 0);
-        }
-    } else {
-        send(*current_socket, "ERR\n", 5, 0);
-    }
-    break;
-}
-
-// ...
+         }
+         break;
+      }
+         // ...
 
 
 
