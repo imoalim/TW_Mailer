@@ -1,5 +1,0 @@
-Message Number: 1
-Sender:ibo
-Receiver: s
-Subject: s
-Message:

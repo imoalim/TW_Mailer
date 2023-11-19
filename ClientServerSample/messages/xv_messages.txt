@@ -1,5 +1,0 @@
-Message Number: 1
-Sender:xv
-Receiver: v
-Subject: v
-Message:

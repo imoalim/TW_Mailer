@@ -1,5 +1,0 @@
-Message Number: 1
-Receiver: ji
-Subject: ki
-Message:
-bla.

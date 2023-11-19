@@ -1,6 +1,0 @@
-Message Number: 1
-Sender:lal
-Receiver: as
-Subject: das
-Message:
-sdasd.

@@ -1,6 +1,0 @@
-Message Number: 1
-Sender:sfsd
-Receiver: 
-Subject: a
-Message:
-

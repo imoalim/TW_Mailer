@@ -1,5 +1,0 @@
-Message Number: 1
-Sender:doni
-Receiver: lo
-Subject: as
-Message:
