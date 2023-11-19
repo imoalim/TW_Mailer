@@ -11,6 +11,7 @@
 #include <sys/stat.h> // Für die Verzeichniserstellung in C++ unter Linux/Unix
 #include <vector>
 #include <sstream>
+#include <unistd.h> // Für getpass
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -23,11 +24,16 @@
 }*/
 struct Send
 {
-   char sender[BUF];
+   char sender[9];
    char receiver[BUF];
    char subject[81];
    int messageNum = 0;
    std::string message;
+};
+struct Info
+{
+   char loggedUsername[9];
+   bool loggedIn = false;
 };
 
 struct List
@@ -46,6 +52,7 @@ int main(int argc, char **argv)
    int isQuit = 1;
    std::string messagesDirectory = "messages";
    std::string clientInput;
+   struct Info info;
 
    ////////////////////////////////////////////////////////////////////////////
    // CREATE A SOCKET
@@ -164,7 +171,9 @@ int main(int argc, char **argv)
             break;
          }
       }
-      printf(">> If you want to SEND a message, type 'Send'\n");
+      // TODO::input anpassen, falls flasch user auffprden ricjtig zu machen
+      printf("SEND, LIST, READ, DELETE is only for authenticated users\n>>If you want to SEND a message, type 'Send'\n");
+      printf(">> If you want to LOG IN type 'Login'\n");
       printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
       printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
       printf(">> If you want to remove a specific message, type 'Delete'\n");
@@ -192,14 +201,13 @@ int main(int argc, char **argv)
          {
             inputs.push_back(std::string(clientInput_array));
             char LDAPUsername[9];
-            char LDAPPassword[BUF];
+            char *LDAPPassword;
 
             std::cout << "LogIn\nEnterUsername (max 8 characters): ";
             std::cin >> LDAPUsername;
             inputs.push_back(LDAPUsername);
 
-            std::cout << "\nEnterPassword: ";
-            std::cin >> LDAPPassword;
+            LDAPPassword = getpass("Enter password: ");
             inputs.push_back(LDAPPassword);
 
             std::string combinedString;
@@ -208,11 +216,56 @@ int main(int argc, char **argv)
                combinedString += input + "\n";
             }
             // 'combinedString' in einen const char* umwandeln
+            size = strlen(buffer);
             strcpy(buffer, combinedString.c_str());
             if ((send(create_socket, buffer, strlen(buffer), 0)) == -1)
             {
                perror("send error");
                break;
+            }
+            // Bestätigung vom Server empfangen
+            char serverResponse[BUF];
+            recv(create_socket, serverResponse, sizeof(serverResponse), 0);
+
+            // Beispiel: Annahme, dass '\n' das Trennzeichen ist
+            char *token = strtok(serverResponse, "\0");
+
+            // Array, um die aufgeteilten Teile zu speichern
+            std::vector<std::string> responseParts;
+
+            // Durchlaufe alle Teile
+            while (token != nullptr)
+            {
+               // Füge das aktuelle Teil zum Array hinzu
+               responseParts.push_back(token);
+               // Hole das nächste Teil
+               token = strtok(nullptr, "\0");
+            }
+
+            // Nun kannst du auf die Teile zugreifen, z.B.:
+            if (responseParts.size() > 0)
+            {
+               std::cout << "Erstes Teil: " << responseParts[0] << std::endl;
+               send(create_socket, "OK", 3, 0);
+
+               // std::cout << "Zweiter Teil: " << responseParts[1] << std::endl;
+            }
+
+            // Überprüfe die Bestätigung vom Server
+            if (responseParts[0] == "loggedIn")
+            {
+               info.loggedIn = true;
+
+               // Benutzernamen vom Server empfangen und speichern
+
+               recv(create_socket, info.loggedUsername, sizeof(info.loggedUsername), 0);
+
+               std::cout << "Erfolgreich eingeloggt als: " << info.loggedUsername << std::endl;
+            }
+            else
+            {
+               std::cerr << "Fehler beim Einloggen." << std::endl;
+               continue;
             }
 
             //(gdb) p buffe
@@ -221,151 +274,158 @@ int main(int argc, char **argv)
          }
 
          std::ofstream outputFile;
-
-         if (strcmp(clientInput_array, "Send") == 0 || strcmp(clientInput_array, "send") == 0)
+         if (info.loggedIn)
          {
-            inputs.push_back(std::string(clientInput_array));
-
-            // Überprüfen und Öffnen der Ausgabedatei
-            struct stat st;
-            if (stat(messagesDirectory.c_str(), &st) != 0)
+            if (strcmp(clientInput_array, "Send") == 0 || strcmp(clientInput_array, "send") == 0)
             {
-               mkdir(messagesDirectory.c_str(), 0777);
-            }
-            std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
-            outputFile.open(userFilename, std::ios::app);
 
-            if (!outputFile)
-            {
-               std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
-            }
-            else
-            {
-               // ... Ihre Nachrichtenverarbeitungslogik hier ...
-               // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
-               std::string line;
+               inputs.push_back(std::string(clientInput_array));
 
-               std::cout << "Bitte geben Sie den Benutzernamen ein: ";
-               std::cin.getline(send_.sender, BUF);
-
-               // Erstelle einen Dateinamen für den Benutzer
+               // Überprüfen und Öffnen der Ausgabedatei
+               struct stat st;
+               if (stat(messagesDirectory.c_str(), &st) != 0)
+               {
+                  mkdir(messagesDirectory.c_str(), 0777);
+               }
                std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+               outputFile.open(userFilename, std::ios::app);
 
-               std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
-
-               std::cout << "SEND\n"
-                         << ">> Sender: " << send_.sender;
-               std::cout << "\n>>Receiver: ";
-               std::cin.getline(send_.receiver, BUF);
-               std::cout << ">>Subject: ";
-               std::cin.getline(send_.subject, 81);
-               std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
-
-               while (std::getline(std::cin, line))
+               if (!outputFile)
                {
-                  if (line == ".")
-                  {
-                     break;
-                  }
-                  send_.message += line + '\n';
+                  std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
                }
-
-               // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
-               int lastMessageNum = 0;
-               std::ifstream inputFile(userFilename);
-               if (inputFile.is_open())
+               else
                {
+                  // ... Ihre Nachrichtenverarbeitungslogik hier ...
+                  // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
                   std::string line;
-                  while (std::getline(inputFile, line))
+                  // Kopiere den Inhalt von info.loggedUsername nach send_.sender
+                  strncpy(send_.sender, info.loggedUsername, sizeof(send_.sender) - 1);
+                  send_.sender[sizeof(send_.sender) - 1] = '\0'; // Stelle sicher, dass das Ziel-Array mit Nullterminator endet
+
+                  // Erstelle einen Dateinamen für den Benutzer
+                  std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+
+                  std::ofstream outputFile(userFilename, std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
+
+                  std::cout << "SEND\n"
+                            << ">> Sender: " << send_.sender;
+                  std::cout << "\n>>Receiver: ";
+                  std::cin.getline(send_.receiver, BUF);
+                  std::cout << ">>Subject: ";
+                  std::cin.getline(send_.subject, 81);
+                  std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
+
+                  while (std::getline(std::cin, line))
                   {
-                     std::istringstream iss(line);
-                     std::string token;
-                     if (iss >> token && token == "Message" && iss >> token && token == "Number:")
+                     if (line == ".")
                      {
-                        iss >> lastMessageNum;
+                        break;
                      }
+                     send_.message += line + '\n';
                   }
-                  inputFile.close();
+
+                  // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
+                  int lastMessageNum = 0;
+                  std::ifstream inputFile(userFilename);
+                  if (inputFile.is_open())
+                  {
+                     std::string line;
+                     while (std::getline(inputFile, line))
+                     {
+                        std::istringstream iss(line);
+                        std::string token;
+                        if (iss >> token && token == "Message" && iss >> token && token == "Number:")
+                        {
+                           iss >> lastMessageNum;
+                        }
+                     }
+                     inputFile.close();
+                  }
+
+                  send_.messageNum = lastMessageNum + 1;
+
+                  // Schreibe die Benutzereingaben in die Datei
+                  outputFile << "Message Number: " << send_.messageNum << '\n';
+                  outputFile << "Sender:" << send_.sender << '\n';
+                  outputFile << "Receiver: " << send_.receiver << '\n';
+                  outputFile << "Subject: " << send_.subject << '\n';
+                  outputFile << "Message:\n"
+                             << send_.message;
+
+                  outputFile.close();
                }
 
-               send_.messageNum = lastMessageNum + 1;
+               // Senden Sie "OK" als Bestätigung an den Server
+               inputs.push_back(send_.sender);
+               inputs.push_back(send_.receiver);
+               inputs.push_back(send_.message);
+               inputs.push_back(send_.subject);
+               inputs.push_back(std::to_string(send_.messageNum));
 
-               // Schreibe die Benutzereingaben in die Datei
-               outputFile << "Message Number: " << send_.messageNum << '\n';
-               outputFile << "Sender:" << send_.sender << '\n';
-               outputFile << "Receiver: " << send_.receiver << '\n';
-               outputFile << "Subject: " << send_.subject << '\n';
-               outputFile << "Message:\n"
-                          << send_.message;
-
-               outputFile.close();
+               memset(buffer, 0, sizeof(buffer[0]) * BUF);
+               // Elemente des Vektors in den Buffer kopieren
+               // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
+               std::string combinedString;
+               for (const auto &input : inputs)
+               {
+                  combinedString += input + "\n";
+               }
+               // 'combinedString' in einen const char* umwandeln
+               strcpy(buffer, combinedString.c_str());
+               // memset(buffer, 0, sizeof(buffer[0])*BUF);
+               // size_t SendBuffer_size = strlen(buffer);
+               // send(create_socket, buffer, SendBuffer_size, 0);
             }
-
-            // Senden Sie "OK" als Bestätigung an den Server
-            inputs.push_back(send_.sender);
-            inputs.push_back(send_.receiver);
-            inputs.push_back(send_.message);
-            inputs.push_back(send_.subject);
-            inputs.push_back(std::to_string(send_.messageNum));
-
-            memset(buffer, 0, sizeof(buffer[0]) * BUF);
-            // Elemente des Vektors in den Buffer kopieren
-            // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
-            std::string combinedString;
-            for (const auto &input : inputs)
+            if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
+            // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
             {
-               combinedString += input + "\n";
+               inputs.push_back(std::string(clientInput_array));
+               std::cout << "LIST MESSAGES\nUsername: ";
+               std::cin.getline(send_.sender, BUF);
+               inputs.push_back(std::string(send_.sender));
+               std::string combinedString;
+               for (const auto &input : inputs)
+               {
+                  combinedString += input + "\n";
+               }
+               // 'combinedString' in einen const char* umwandeln
+               strcpy(buffer, combinedString.c_str());
+               // memset(buffer, 0, sizeof(buffer[0])*BUF);
+               // size_t SendBuffer_size = strlen(buffer);
+
+               // std::string listRequest = std::string(send_.sender);
+               // strncpy(buffer, listRequest.c_str(), BUF);
+
+               if (send(create_socket, buffer, strlen(buffer), 0) == -1)
+               {
+                  perror("send error");
+                  break;
+               }
+
+               // Receive the list of messages from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size == -1)
+               {
+                  perror("recv error");
+                  break;
+               }
+               else if (size == 0)
+               {
+                  printf("Server closed remote socket\n");
+                  break;
+               }
+               else
+               {
+                  buffer[size] = '\0';
+                  // printf("Received list of messages:\n%s\n", buffer);
+                  // send(create_socket, "OK", 3, 0);
+               }
             }
-            // 'combinedString' in einen const char* umwandeln
-            strcpy(buffer, combinedString.c_str());
-            // memset(buffer, 0, sizeof(buffer[0])*BUF);
-            // size_t SendBuffer_size = strlen(buffer);
-            // send(create_socket, buffer, SendBuffer_size, 0);
          }
-         if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
-         // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
+         else
          {
-            inputs.push_back(std::string(clientInput_array));
-            std::cout << "LIST MESSAGES\nUsername: ";
-            std::cin.getline(send_.sender, BUF);
-            inputs.push_back(std::string(send_.sender));
-            std::string combinedString;
-            for (const auto &input : inputs)
-            {
-               combinedString += input + "\n";
-            }
-            // 'combinedString' in einen const char* umwandeln
-            strcpy(buffer, combinedString.c_str());
-            // memset(buffer, 0, sizeof(buffer[0])*BUF);
-            // size_t SendBuffer_size = strlen(buffer);
-
-            // std::string listRequest = std::string(send_.sender);
-            // strncpy(buffer, listRequest.c_str(), BUF);
-
-            if (send(create_socket, buffer, strlen(buffer), 0) == -1)
-            {
-               perror("send error");
-               break;
-            }
-
-            // Receive the list of messages from the server
-            size = recv(create_socket, buffer, BUF - 1, 0);
-            if (size == -1)
-            {
-               perror("recv error");
-               break;
-            }
-            else if (size == 0)
-            {
-               printf("Server closed remote socket\n");
-               break;
-            }
-            else
-            {
-               buffer[size] = '\0';
-               // printf("Received list of messages:\n%s\n", buffer);
-               // send(create_socket, "OK", 3, 0);
-            }
+            printf("\nPlease log in to use all commands\n");
          }
 
          if (strcmp(buffer, "Quit") == 0 || strcmp(buffer, "quit") == 0)

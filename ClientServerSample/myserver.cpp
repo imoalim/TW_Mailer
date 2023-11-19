@@ -53,6 +53,8 @@ struct LDAPServer
    char ldapBindUser[256];
    char ldapBindPassword[256];
    char rawLdapUser[128];
+   std::string LDAPUsername;
+   std::string LDAPPassword;
 };
 
 int ldap(const char *username, const char *password)
@@ -277,24 +279,24 @@ struct InputSplitter
 
 enum ValidCommand
 {
-    LIST,
-    SEND,
-    LOGIN,
-    READ,
-    QUIT
+   LIST,
+   SEND,
+   LOGIN,
+   READ,
+   QUIT
 };
 
 bool checkCommand(const std::string &command)
 {
-    // Gültige Befehle als Vektor von Strings
-    std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
+   // Gültige Befehle als Vektor von Strings
+   std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
 
-    // Umwandlung des Eingabebefehls zu Kleinbuchstaben
-    std::string lowercaseCommand = command;
-    std::transform(lowercaseCommand.begin(), lowercaseCommand.end(), lowercaseCommand.begin(), ::tolower);
+   // Umwandlung des Eingabebefehls zu Kleinbuchstaben
+   std::string lowercaseCommand = command;
+   std::transform(lowercaseCommand.begin(), lowercaseCommand.end(), lowercaseCommand.begin(), ::tolower);
 
-    // Überprüfung, ob der Befehl in den gültigen Befehlen enthalten ist
-    return std::find(validCommands.begin(), validCommands.end(), lowercaseCommand) != validCommands.end();
+   // Überprüfung, ob der Befehl in den gültigen Befehlen enthalten ist
+   return std::find(validCommands.begin(), validCommands.end(), lowercaseCommand) != validCommands.end();
 }
 
 int main(void)
@@ -433,6 +435,7 @@ void *clientCommunication(void *data)
    char buffer[BUF];
    int size;
    int *current_socket = (int *)data;
+   struct LDAPServer ldapServer;
 
    ////////////////////////////////////////////////////////////////////////////
    // SEND welcome message
@@ -482,133 +485,143 @@ void *clientCommunication(void *data)
       }
 
       buffer[size] = '\0';
-     
 
       // bearbeite den Input
       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
 
       std::string command = input[0];
-       
+
       bool loggedIn = false;
 
-      if(checkCommand(command)){
-if (command == "Login")
+      if (checkCommand(command))
       {
-         std::string LDAPUsername = input[1].substr(0, 9);   // Begrenzt auf die ersten 9 Zeichen
-         std::string LDAPPassword = input[2].substr(0, BUF); // Begrenzt auf die ersten BUF Zeichen
 
-         if (ldap(LDAPUsername.c_str(), LDAPPassword.c_str()))
+         if (command == "Login" || command == "login")
          {
-            loggedIn = true;
-            printf("Benutzer %s ist eingeloggt.\n", LDAPUsername.c_str());
-         }
-         else
-         {
-            perror("LDAP-Fehler");
-         }
-      }
-
-      if (command == "Send" || command == "send")
-      {
-         if (loggedIn)
-         {
-            printf("logedIN");
-            // TODO:: es geht beim send befehl zweimal hinein. FIX BUG
+            ldapServer.LDAPUsername = input[1].substr(0, 9);   // Begrenzt auf die ersten 9 Zeichen
+            ldapServer.LDAPPassword = input[2].substr(0, BUF); // Begrenzt auf die ersten BUF Zeichen
+            if (ldap(ldapServer.LDAPUsername.c_str(), ldapServer.LDAPPassword.c_str()))
             {
-               if (send(*current_socket, "OK", 3, 0) == -1)
+               send(*current_socket, "loggedIn", 9, 0);
+
+               // Warte auf die Bestätigung, dass der Benutzer eingeloggt ist
+               char serverResponse[BUF];
+               recv(*current_socket, serverResponse, sizeof(serverResponse), 0);
+
+               if (strcmp(serverResponse, "OK") == 0)
+               {
+                  send(*current_socket, ldapServer.LDAPUsername.c_str(), strlen(ldapServer.LDAPUsername.c_str()), 0);
+
+                  loggedIn = true;
+                  printf("Benutzer %s ist eingeloggt.\n", ldapServer.LDAPUsername.c_str());
+               }
+               else
                {
                   send(*current_socket, "FAIL", 5, 0);
-                  perror("Fehler beim Senden der Bestätigung an den Client");
+                  perror("\nLDAP-Fehler");
                }
-               else
-               {
-                  printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
-
-                  send(*current_socket, "OK", 3, 0);
-               }
-               // Falls ein Fehler auftritt:
-               // send(create_socket, "FAIL", 4, 0);
             }
          }
-      }
-
-      if (command == "List" || command == "list")
-      {
-         char username[BUF];
-         strcpy(username, input[1].c_str());
-
-         // Nachrichteninformationen extrahieren
-         int totalMessages = 0;
-         std::vector<std::string> allSubjects;
-
-         DIR *dir;
-         struct dirent *entry;
-
-         dir = opendir("messages");
-         if (dir == NULL)
+         if (loggedIn)
          {
-            perror("Unable to open messages directory");
-            return NULL;
-         }
-
-         // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
-         while ((entry = readdir(dir)) != NULL)
-         {
-            if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+            if (command == "Send" || command == "send")
             {
-               std::string filepath = "messages/" + std::string(entry->d_name);
-
-               // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
-               if (access(filepath.c_str(), F_OK) != -1)
+               printf("logedIN");
+               // TODO:: es geht beim send befehl zweimal hinein. FIX BUG
                {
-                  // Hier speicherst du die zurückgegebenen Informationen
-                  std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
-
-                  int messageCount = messageInfo.size();
-                  std::vector<std::string> subjects;
-
-                  // Hier fügst du die Betreffzeilen zur allSubjects hinzu
-                  for (const auto &info : messageInfo)
+                  if (send(*current_socket, "OK", 3, 0) == -1)
                   {
-                     subjects.push_back(info.subject);
+                     send(*current_socket, "FAIL", 5, 0);
+                     perror("Fehler beim Senden der Bestätigung an den Client");
                   }
+                  else
+                  {
+                     printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
 
-                  totalMessages += messageCount;
-                  allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
+                     send(*current_socket, "OK", 3, 0);
+                  }
+                  // Falls ein Fehler auftritt:
+                  // send(create_socket, "FAIL", 4, 0);
                }
-               else
+            }
+
+            if (command == "List" || command == "list")
+            {
+               char username[BUF];
+               strcpy(username, input[1].c_str());
+
+               // Nachrichteninformationen extrahieren
+               int totalMessages = 0;
+               std::vector<std::string> allSubjects;
+
+               DIR *dir;
+               struct dirent *entry;
+
+               dir = opendir("messages");
+               if (dir == NULL)
                {
-                  std::cerr << "File does not exist: " << filepath << std::endl;
-                  // Sende eine Fehlermeldung an den Client
-                  send(*current_socket, "FAIL: File does not exist", 26, 0);
+                  perror("Unable to open messages directory");
+                  return NULL;
+               }
+
+               // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
+               while ((entry = readdir(dir)) != NULL)
+               {
+                  if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+                  {
+                     std::string filepath = "messages/" + std::string(entry->d_name);
+
+                     // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
+                     if (access(filepath.c_str(), F_OK) != -1)
+                     {
+                        // Hier speicherst du die zurückgegebenen Informationen
+                        std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
+
+                        int messageCount = messageInfo.size();
+                        std::vector<std::string> subjects;
+
+                        // Hier fügst du die Betreffzeilen zur allSubjects hinzu
+                        for (const auto &info : messageInfo)
+                        {
+                           subjects.push_back(info.subject);
+                        }
+
+                        totalMessages += messageCount;
+                        allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
+                     }
+                     else
+                     {
+                        std::cerr << "File does not exist: " << filepath << std::endl;
+                        // Sende eine Fehlermeldung an den Client
+                        send(*current_socket, "FAIL: File does not exist", 26, 0);
+                        return NULL;
+                     }
+                  }
+               }
+               closedir(dir);
+
+               // Zeige die Nachrichteninformationen auf der Serverkonsole an
+               printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
+               printf("Betreff der Nachrichten:\n");
+
+               for (const auto &subject : allSubjects)
+               {
+                  printf("%s\n", subject.c_str());
+               }
+
+               // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
+               if (send(*current_socket, "OK", 3, 0) == -1)
+               {
+                  perror("send OK failed");
                   return NULL;
                }
             }
          }
-         closedir(dir);
-
-         // Zeige die Nachrichteninformationen auf der Serverkonsole an
-         printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
-         printf("Betreff der Nachrichten:\n");
-
-         for (const auto &subject : allSubjects)
+         if (command == "Quit" || command == "quit")
          {
-            printf("%s\n", subject.c_str());
+            // Senden Sie den "Quit"-Befehl an den Server
+            printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
          }
-
-         // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
-         if (send(*current_socket, "OK", 3, 0) == -1)
-         {
-            perror("send OK failed");
-            return NULL;
-         }
-      }
-
-      if (command == "Quit" || command == "quit")
-      {
-         // Senden Sie den "Quit"-Befehl an den Server
-         printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
-      }
       }
       else
       {
