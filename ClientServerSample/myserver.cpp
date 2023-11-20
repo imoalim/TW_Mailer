@@ -40,6 +40,11 @@ struct MessageInfo
    int messageNumber;
    std::string subject;
 };
+struct Message
+{
+   std::string number;
+   std::string text;
+};
 
 struct LDAPServer
 {
@@ -150,6 +155,30 @@ int ldap(const char *username, const char *password)
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return false;
    }
+}
+// Funktion zur Extraktion des Nachrichtentextes
+std::string extractMessageText(const std::string &fullText)
+{
+   // Hier implementierst du den Code zum Extrahieren der Nachricht aus dem vollständigen Text
+   // Angenommen, der vollständige Text ist im Format "Message: [Nachrichtentext]"
+   // Dann könntest du etwas wie dies tun:
+
+   size_t startPos = fullText.find("Message: ");
+   if (startPos != std::string::npos)
+   {
+      // Der Startindex des Nachrichtentextes ist gefunden
+      startPos += 9; // Länge von "Message: "
+
+      size_t endPos = fullText.find("\n", startPos);
+      if (endPos != std::string::npos)
+      {
+         // Der Endindex des Nachrichtentextes ist gefunden
+         return fullText.substr(startPos, endPos - startPos);
+      }
+   }
+
+   // Rückgabe eines leeren Texts, wenn das Format nicht erkannt wird
+   return "";
 }
 
 std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
@@ -301,6 +330,7 @@ int main(void)
    socklen_t addrlen;
    struct sockaddr_in address, cliaddress;
    int reuseValue = 1;
+   struct MessageInfo messageInfo;
 
    ////////////////////////////////////////////////////////////////////////////
    // SIGNAL HANDLER
@@ -540,7 +570,89 @@ void *clientCommunication(void *data)
                   // send(create_socket, "FAIL", 4, 0);
                }
             }
+            if (command == "Read" || command == "read")
+            {
 
+               char username[BUF];
+               char messageNumber[BUF];
+               strcpy(username, input[1].c_str());
+               strcpy(messageNumber, input[2].c_str());
+               std::vector<Message> messages; // Vektor für gefundene Nachrichten
+
+               DIR *dir;
+               struct dirent *entry;
+
+               dir = opendir("messages");
+               if (dir == NULL)
+               {
+                  perror("Unable to open messages directory");
+                  return NULL;
+               }
+
+               // Durchsuchen Sie das Verzeichnis nach Dateien, die zum Benutzer passen
+               while ((entry = readdir(dir)) != NULL)
+               {
+                  if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+                  {
+                     std::string filepath = "messages/" + std::string(entry->d_name);
+
+                     std::ifstream file(filepath);
+                     if (!file.is_open())
+                     {
+                        perror("Unable to open message file");
+                        closedir(dir);
+                        return NULL;
+                     }
+
+                     Message currentMessage; // Struktur für die aktuelle Nachricht
+                     currentMessage.number = messageNumber;
+
+                     // Durchsuchen Sie die Datei nach der gewünschten Nachrichtennummer
+                     std::string line;
+                     while (std::getline(file, line))
+                     {
+                        std::string messageNumberString(messageNumber);
+                        if (line.find("Message Number: " + messageNumberString) != std::string::npos)
+                        {
+
+                           // Drucken Sie alle folgenden Zeilen der Nachricht, bis eine neue Nachricht beginnt
+                           while (std::getline(file, line) && !line.empty() && line.find("Message Number: ") == std::string::npos)
+                           {
+                              currentMessage.text += line + "\n";
+                              messages.push_back(currentMessage);
+                           }
+                           // Fügen Sie die aktuelle Nachricht zum Vektor hinzu
+                           break; // Nachricht gefunden, Schleife verlassen
+                        }
+                     }
+
+                     file.close();
+                  }
+               }
+
+               closedir(dir);
+
+               // Überprüfen Sie, ob Nachrichten gefunden wurden
+               if (!messages.empty())
+               {
+                  // Drucken Sie die gesammelten Nachrichten
+                  for (const auto &msg : messages)
+                  {
+                     // std::cout << "Message Number: " << msg.number << "\n";
+                     // Extrahiere den Nachrichtentext
+                     std::string messageText = extractMessageText(msg.text);
+
+                     // Drucke den Nachrichtentext
+                     std::cout << messageText << std::endl;
+                  }
+                  send(*current_socket, "OK", 3, 0);
+               }
+               else
+               {
+                  std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
+                  send(*current_socket, "FAIL", 5, 0);
+               }
+            }
             if (command == "List" || command == "list")
             {
                char username[BUF];
