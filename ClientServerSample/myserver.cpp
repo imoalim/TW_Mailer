@@ -46,75 +46,64 @@ struct Message
    std::string text;
 };
 
+// Struktur, die die Konfiguration für den LDAP-Server enthält
 struct LDAPServer
 {
-   std::string Host = "ldap.technikum.wien.at";
-   int16_t Port = 389;
-   std::string SearchBase = "dc=technikum-wien,dc=at";
-   // anonymous bind with user and pw empty
-   const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
-   const int ldapVersion = LDAP_VERSION3;
-   // read username (bash: export ldapuser=<yourUsername>)
-   char ldapBindUser[256];
-   char ldapBindPassword[256];
-   char rawLdapUser[128];
-   std::string LDAPUsername;
-   std::string LDAPPassword;
-   bool loggedIn = false;
+   std::string Host = "ldap.technikum.wien.at";        // Hostname des LDAP-Servers
+   int16_t Port = 389;                                 // Portnummer für die Verbindung zum LDAP-Server
+   std::string SearchBase = "dc=technikum-wien,dc=at"; // Basis für LDAP-Suchanfragen
+   // Anonymer Bind mit Benutzer und Passwort leer
+   const char *ldapUri = "ldap://ldap.technikum-wien.at:389"; // URI für die Verbindung zum LDAP-Server
+   const int ldapVersion = LDAP_VERSION3;                     // LDAP-Protokollversion
+   // Benutzername aus der Umgebungsvariable extrahieren (bash: export ldapuser=<yourUsername>)
+   char ldapBindUser[256];     // Bind-Benutzer im LDAP-Format
+   char ldapBindPassword[256]; // Bind-Passwort
+   char rawLdapUser[128];      // Roher Benutzername
+   std::string LDAPUsername;   // Benutzername im C++-String-Format
+   std::string LDAPPassword;   // Passwort im C++-String-Format
+   bool loggedIn = false;      // Flag, das angibt, ob der Benutzer angemeldet ist
 };
 
+// Funktion für die LDAP-Authentifizierung
 int ldap(const char *username, const char *password)
 {
-   ////////////////////////////////////////////////////////////////////////////
-   // LDAP config
+   // Erstellen einer Instanz der LDAPServer-Struktur
    struct LDAPServer ldapServer;
 
+   // Kopieren des Benutzernamens in die Struktur
    strcpy(ldapServer.rawLdapUser, username);
+   // Erstellen des Bind-Benutzernamens im LDAP-Format
    sprintf(ldapServer.ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", ldapServer.rawLdapUser);
-   printf("user set to: %s\n", ldapServer.ldapBindUser);
+   printf("Benutzer auf: %s gesetzt\n", ldapServer.ldapBindUser);
 
-   // read password (bash: export ldappw=<yourPW>)
-
+   // Kopieren des Passworts in die Struktur
    strcpy(ldapServer.ldapBindPassword, password);
 
-   // search settings
-   // const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
-   // const char *ldapSearchFilter = "(uid=if19b00*)";
-   // ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
-   // const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
+   int rc = 0; // Variable zur Speicherung von LDAP-Rückgabewerten
 
-   // general
-   int rc = 0; // return code
-
-   ////////////////////////////////////////////////////////////////////////////
-   // setup LDAP connection
-   // https://linux.die.net/man/3/ldap_initialize
+   // LDAP-Handle erstellen und initialisieren
    LDAP *ldapHandle;
    rc = ldap_initialize(&ldapHandle, ldapServer.ldapUri);
    if (rc != LDAP_SUCCESS)
    {
-      fprintf(stderr, "ldap_init failed\n");
+      fprintf(stderr, "ldap_init fehlgeschlagen\n");
       return EXIT_FAILURE;
    }
-   printf("connected to LDAP server %s\n", ldapServer.ldapUri);
+   printf("Mit LDAP-Server %s verbunden\n", ldapServer.ldapUri);
 
-   ////////////////////////////////////////////////////////////////////////////
-   // set verison options
-   // https://linux.die.net/man/3/ldap_set_option
+   // LDAP-Option für die Protokollversion setzen
    rc = ldap_set_option(
        ldapHandle,
-       LDAP_OPT_PROTOCOL_VERSION, // OPTION
-       &ldapServer.ldapVersion);  // IN-Value
+       LDAP_OPT_PROTOCOL_VERSION,
+       &ldapServer.ldapVersion);
    if (rc != LDAP_OPT_SUCCESS)
    {
-      // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
       fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return EXIT_FAILURE;
    }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // start connection secure (initialize TLS)
+   // TLS initialisieren
    rc = ldap_start_tls_s(
        ldapHandle,
        NULL,
@@ -126,13 +115,11 @@ int ldap(const char *username, const char *password)
       return EXIT_FAILURE;
    }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // bind credentials
-
+   // Binden an den LDAP-Server
    BerValue bindCredentials;
    bindCredentials.bv_val = (char *)ldapServer.ldapBindPassword;
    bindCredentials.bv_len = strlen(ldapServer.ldapBindPassword);
-   BerValue *servercredp; // server's credentials
+   BerValue *servercredp;
    rc = ldap_sasl_bind_s(
        ldapHandle,
        ldapServer.ldapBindUser,
@@ -143,36 +130,35 @@ int ldap(const char *username, const char *password)
        &servercredp);
    if (rc == LDAP_SUCCESS)
    {
-      // Erfolgreich eingeloggt
-      printf("LDAP bind successful\n");
+      // Erfolgreich gebunden
+      printf("LDAP-Bind erfolgreich\n");
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return true;
    }
    else
    {
-      // Fehlgeschlagenes Einloggen
-      fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
+      // Fehler beim Binden
+      fprintf(stderr, "LDAP-Bindfehler: %s\n", ldap_err2string(rc));
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return false;
    }
 }
-// Funktion zur Extraktion des Nachrichtentextes
+
+/// Funktion zur Extraktion des Nachrichtentextes
 std::string extractMessageText(const std::string &fullText)
 {
-   // Hier implementierst du den Code zum Extrahieren der Nachricht aus dem vollständigen Text
-   // Angenommen, der vollständige Text ist im Format "Message: [Nachrichtentext]"
-   // Dann könntest du etwas wie dies tun:
-
+   // Startposition des Nachrichtentextes finden
    size_t startPos = fullText.find("Message: ");
    if (startPos != std::string::npos)
    {
-      // Der Startindex des Nachrichtentextes ist gefunden
-      startPos += 9; // Länge von "Message: "
+      // Startindex auf die Position nach "Message: " verschieben
+      startPos += 9;
 
-      size_t endPos = fullText.find("\n", startPos);
+      // Endposition des Nachrichtentextes finden (bis zur nächsten "Next Message")
+      size_t endPos = fullText.find("\nNext Message");
       if (endPos != std::string::npos)
       {
-         // Der Endindex des Nachrichtentextes ist gefunden
+         // Den Nachrichtentext extrahieren und zurückgeben
          return fullText.substr(startPos, endPos - startPos);
       }
    }
@@ -275,19 +261,29 @@ std::string extractMessages(const std::string &username)
 
 struct InputSplitter
 {
+   /**
+    * Teilt einen C-String anhand eines Trennzeichens auf.
+    *
+    * @param buffer Der zu teilende C-String.
+    * @param size Die Größe des C-Strings.
+    * @param delimiter Das Trennzeichen für die Aufteilung.
+    * @return Ein Vektor von Teilen des C-Strings.
+    */
    static std::vector<std::string> split(const char *buffer, int size, char delimiter)
    {
-      std::vector<std::string> result;
-      std::string current;
+      std::vector<std::string> result; // Ergebnisvektor für die Teile des C-Strings
+      std::string current;             // Aktueller Teilstring, der aufgebaut wird
 
       for (int i = 0; i < size; i++)
       {
          if (buffer[i] != delimiter)
          {
+            // Zeichen zum aktuellen Teilstring hinzufügen
             current += buffer[i];
          }
          else
          {
+            // Aktuellen Teilstring zum Ergebnisvektor hinzufügen und zurücksetzen
             result.push_back(current);
             current = "";
          }
@@ -299,7 +295,7 @@ struct InputSplitter
          result.push_back(current);
       }
 
-      return result;
+      return result; // Rückgabe des Vektors mit den Teilen des C-Strings
    }
 };
 
@@ -573,7 +569,6 @@ void *clientCommunication(void *data)
             }
             if (command == "Read" || command == "read")
             {
-
                char username[BUF];
                char messageNumber[BUF];
                strcpy(username, input[1].c_str());
@@ -610,36 +605,60 @@ void *clientCommunication(void *data)
 
                      // Durchsuchen Sie die Datei nach der gewünschten Nachrichtennummer
                      std::string line;
+                     bool foundMessage = false;
+
+                     // Öffne eine temporäre Datei für den Schreibzugriff
+                     std::ofstream tempFile("tempFile.txt");
+
                      while (std::getline(file, line))
                      {
                         std::string messageNumberString(messageNumber);
                         if (line.find("Message Number: " + messageNumberString) != std::string::npos)
                         {
+                           foundMessage = true;
+
+                           // Schreibe die Zeile mit der Nachrichtennummer in die temporäre Datei
+                           tempFile << line << std::endl;
 
                            // Drucken Sie alle folgenden Zeilen der Nachricht, bis eine neue Nachricht beginnt
-                           while (std::getline(file, line) && !line.empty() && line.find("Message Number: ") == std::string::npos)
+                           while (std::getline(file, line) && !line.empty())
                            {
-                              currentMessage.text += line + "\n";
-                              messages.push_back(currentMessage);
+                              if (line.find("Next Message") != std::string::npos)
+                              {
+                                 // Nachricht bis zur nächsten "Next Message" gefunden, beende die Schleife
+                                 break;
+                              }
+                              tempFile << line << std::endl;
                            }
+
                            // Fügen Sie die aktuelle Nachricht zum Vektor hinzu
+                           messages.push_back(currentMessage);
                            break; // Nachricht gefunden, Schleife verlassen
                         }
                      }
 
+                     if (!foundMessage)
+                     {
+                        std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
+                        send(*current_socket, "FAIL", 5, 0);
+                     }
+
                      file.close();
+                     tempFile.close();
+
+                     // Überschreibe die ursprüngliche Datei mit der temporären Datei
+                     std::remove(filepath.c_str());
+                     std::rename("tempFile.txt", filepath.c_str());
                   }
                }
 
                closedir(dir);
 
-               // Überprüfen Sie, ob Nachrichten gefunden wurden
                if (!messages.empty())
                {
                   // Drucken Sie die gesammelten Nachrichten
                   for (const auto &msg : messages)
                   {
-                     // std::cout << "Message Number: " << msg.number << "\n";
                      // Extrahiere den Nachrichtentext
                      std::string messageText = extractMessageText(msg.text);
 
@@ -648,18 +667,12 @@ void *clientCommunication(void *data)
                   }
                   send(*current_socket, "OK", 3, 0);
                }
-               else
-               {
-                  std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
-                  send(*current_socket, "FAIL", 5, 0);
-               }
             }
-if (command == "List" || command == "list")
+            if (command == "List" || command == "list")
             {
                char username[BUF];
                strcpy(username, input[1].c_str());
 
-               // Nachrichteninformationen extrahieren
                int totalMessages = 0;
                std::vector<std::string> allSubjects;
 
@@ -672,8 +685,6 @@ if (command == "List" || command == "list")
                   perror("Unable to open messages directory");
                   return NULL;
                }
-               // TODO:: if filepath is not found send error.
-
                // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
                while ((entry = readdir(dir)) != NULL)
                {
@@ -684,13 +695,13 @@ if (command == "List" || command == "list")
                      // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
                      if (access(filepath.c_str(), F_OK) != -1)
                      {
-                        // Hier speicherst du die zurückgegebenen Informationen
+                        // speichere die zurückgegebenen Informationen
                         std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
 
                         int messageCount = messageInfo.size();
                         std::vector<std::string> subjects;
 
-                        // Hier fügst du die Betreffzeilen zur allSubjects hinzu
+                        // füge Betreffzeilen zur allSubjects hinzu
                         for (const auto &info : messageInfo)
                         {
                            subjects.push_back(info.subject);
@@ -702,7 +713,6 @@ if (command == "List" || command == "list")
                      else
                      {
                         std::cerr << "File does not exist: " << filepath << std::endl;
-                        // Sende eine Fehlermeldung an den Client
                         send(*current_socket, "FAIL: File does not exist", 26, 0);
                         return NULL;
                      }
@@ -710,7 +720,6 @@ if (command == "List" || command == "list")
                }
                closedir(dir);
 
-               // Zeige die Nachrichteninformationen auf der Serverkonsole an
                printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
                printf("Betreff der Nachrichten:\n");
 
@@ -719,7 +728,6 @@ if (command == "List" || command == "list")
                   printf("%s\n", subject.c_str());
                }
 
-               // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
                if (send(*current_socket, "OK", 3, 0) == -1)
                {
                   perror("send OK failed");
@@ -727,99 +735,97 @@ if (command == "List" || command == "list")
                }
             }
 
-if (command == "Delete" || command == "delete")
-{
-    std::string username = input[1];
-    int messageNumber = std::stoi(input[2]);
-
-    DIR *dir;
-    struct dirent *entry;
-    bool messageFound = false;
-
-    dir = opendir("messages");
-    if (dir == NULL)
-    {
-        perror("Unable to open messages directory");
-        return NULL;
-    }
-
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, username.c_str()) != NULL)
-        {
-            std::string filepath = "messages/" + std::string(entry->d_name);
-
-            std::ifstream inputFile(filepath);
-            std::ofstream outputFile("tempDatei.txt");
-            std::string line;
-
-            if (inputFile.is_open())
+            if (command == "Delete" || command == "delete")
             {
-                while (std::getline(inputFile, line))
-                {
-                    // Überprüfe, ob die Zeile die zu löschende Nachricht enthält
-                    if (line.find("Message Number: " + std::to_string(messageNumber)) == std::string::npos)
-                    {
-                        // Füge die Zeile zur temporären Datei hinzu, wenn die Nachricht nicht gefunden wurde
-                        outputFile << line << std::endl;
-                    }
-                    else
-                    {
-                        messageFound = true;
-                    }
-                }
-                inputFile.close();
-                outputFile.close();
+               std::string username = input[1];
+               int messageNumber = std::stoi(input[2]);
+
+               DIR *dir;
+               struct dirent *entry;
+               bool messageFound = false;
+
+               dir = opendir("messages");
+               if (dir == NULL)
+               {
+                  perror("Unable to open messages directory");
+                  return NULL;
+               }
+
+               while ((entry = readdir(dir)) != NULL)
+               {
+                  if (entry->d_type == DT_REG && strstr(entry->d_name, username.c_str()) != NULL)
+                  {
+                     std::string filepath = "messages/" + std::string(entry->d_name);
+
+                     std::ifstream inputFile(filepath);
+                     std::ofstream outputFile("tempDatei.txt");
+                     std::string line;
+
+                     if (inputFile.is_open())
+                     {
+                        while (std::getline(inputFile, line))
+                        {
+                           // Überprüfe, ob die Zeile die zu löschende Nachricht enthält
+                           if (line.find("Message Number: " + std::to_string(messageNumber)) == std::string::npos)
+                           {
+                              // Füge die Zeile zur temporären Datei hinzu, wenn die Nachricht nicht gefunden wurde
+                              outputFile << line << std::endl;
+                           }
+                           else
+                           {
+                              messageFound = true;
+                           }
+                        }
+                        inputFile.close();
+                        outputFile.close();
+                     }
+                     else
+                     {
+                        std::cerr << "File does not exist: " << filepath << std::endl;
+                        send(*current_socket, "FAIL: File does not exist", 26, 0);
+                     }
+
+                     // Lösche die ursprüngliche Datei und benenne die temporäre Datei um
+                     if (remove(filepath.c_str()) != 0)
+                     {
+                        std::cerr << "Fehler beim Löschen der ursprünglichen Datei." << std::endl;
+                        send(*current_socket, "FAIL: Error deleting message", 29, 0);
+                        return NULL;
+                     }
+                     if (rename("tempDatei.txt", filepath.c_str()) != 0)
+                     {
+                        std::cerr << "Fehler beim Umbenennen der temporären Datei." << std::endl;
+                        send(*current_socket, "FAIL: Error renaming file", 24, 0);
+                        return NULL;
+                     }
+
+                     break; // Datei gefunden, Schleife verlassen
+                  }
+               }
+               closedir(dir);
+
+               if (messageFound)
+               {
+                  send(*current_socket, "OK", 3, 0);
+               }
+               else
+               {
+                  std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
+                  send(*current_socket, "FAIL: Message not found", 24, 0);
+               }
             }
-            else
-            {
-                std::cerr << "File does not exist: " << filepath << std::endl;
-                send(*current_socket, "FAIL: File does not exist", 26, 0);
-            }
-
-            // Lösche die ursprüngliche Datei und benenne die temporäre Datei um
-            if (remove(filepath.c_str()) != 0)
-            {
-                std::cerr << "Fehler beim Löschen der ursprünglichen Datei." << std::endl;
-                send(*current_socket, "FAIL: Error deleting message", 29, 0);
-                return NULL;
-            }
-            if (rename("tempDatei.txt", filepath.c_str()) != 0)
-            {
-                std::cerr << "Fehler beim Umbenennen der temporären Datei." << std::endl;
-                send(*current_socket, "FAIL: Error renaming file", 24, 0);
-                return NULL;
-            }
-
-            break; // Datei gefunden, Schleife verlassen
-        }
-    }
-    closedir(dir);
-
-    if (messageFound)
-    {
-        send(*current_socket, "OK", 3, 0);
-    }
-    else
-    {
-        std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
-        send(*current_socket, "FAIL: Message not found", 24, 0);
-    }
-}
-
-
-  }
+         }
          if (command == "Quit" || command == "quit")
          {
             // Senden Sie den "Quit"-Befehl an den Server
             printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
          }
-      } 
+      }
       else
       {
          printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
       }
-           if (send(*current_socket, "OK", 3, 0) == -1)
+      if (send(*current_socket, "OK", 3, 0) == -1)
       {
          if (send(*current_socket, "OK", 3, 0) == -1)
          {
@@ -827,7 +833,7 @@ if (command == "Delete" || command == "delete")
             return NULL;
          }
       }
-     
+
    } while (strcmp(buffer, "q") != 0 || !abortRequested);
 
    // closes/frees the descriptor if not already

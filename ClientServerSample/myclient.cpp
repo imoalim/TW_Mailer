@@ -20,9 +20,7 @@
 #define PORT 6543
 
 ///////////////////////////////////////////////////////////////////////////////
-/*void userInput(char input[], int isQuit){
 
-}*/
 struct Send
 {
    char sender[9];
@@ -172,15 +170,14 @@ int main(int argc, char **argv)
             break;
          }
       }
-      // TODO::input anpassen, falls flasch user auffprden ricjtig zu machen
       printf("SEND, LIST, READ, DELETE is only for authenticated users\n>>If you want to SEND a message, type 'Send'\n");
       printf(">> If you want to LOG IN type 'Login'\n");
       printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
       printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
       printf(">> If you want to remove a specific message, type 'Delete'\n");
       printf(">> If you want to logout the client, type 'Quit'\n");
-      char clientInput_array[BUF]; // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
-      clientInput_array[0] = '\0'; // Initialisiere mit einem leeren String
+      char clientInput_array[BUF];
+      clientInput_array[0] = '\0';
       std::vector<std::string> inputs;
 
       // buffer auf null setzten und clientInputarray
@@ -192,10 +189,10 @@ int main(int argc, char **argv)
       {
          int size = strlen(clientInput_array);
 
-         // Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
+         // Entfernen von Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
          if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r'))
          {
-            clientInput_array[size - 1] = '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
+            clientInput_array[size - 1] = '\0'; //  Zeichen am Ende auf Nullterminator
          }
 
          if (strcmp(clientInput_array, "Login") == 0 || strcmp(clientInput_array, "login") == 0)
@@ -216,7 +213,6 @@ int main(int argc, char **argv)
             {
                combinedString += input + "\n";
             }
-            // 'combinedString' in einen const char* umwandeln
             size = strlen(buffer);
             strcpy(buffer, combinedString.c_str());
             if ((send(create_socket, buffer, strlen(buffer), 0)) == -1)
@@ -224,11 +220,10 @@ int main(int argc, char **argv)
                perror("send error");
                break;
             }
-            // Bestätigung vom Server empfangen
             char serverResponse[BUF];
             recv(create_socket, serverResponse, sizeof(serverResponse), 0);
 
-            // Beispiel: Annahme, dass '\n' das Trennzeichen ist
+            //  '\0' ist Trennzeichen
             char *token = strtok(serverResponse, "\0");
 
             // Array, um die aufgeteilten Teile zu speichern
@@ -243,13 +238,10 @@ int main(int argc, char **argv)
                token = strtok(nullptr, "\0");
             }
 
-            // Nun kannst du auf die Teile zugreifen, z.B.:
             if (responseParts.size() > 0)
             {
                std::cout << "Erstes Teil: " << responseParts[0] << std::endl;
                send(create_socket, "OK", 3, 0);
-
-               // std::cout << "Zweiter Teil: " << responseParts[1] << std::endl;
             }
 
             // Überprüfe die Bestätigung vom Server
@@ -268,10 +260,6 @@ int main(int argc, char **argv)
                std::cerr << "Fehler beim Einloggen." << std::endl;
                continue;
             }
-
-            //(gdb) p buffe
-            //$8 = "Login\nif22b252\nYusra2010\n", '\000' <repeats 998 times>
-            // memset(buffer, 0, sizeof(buffer[0])*BUF);
          }
 
          std::ofstream outputFile;
@@ -297,12 +285,9 @@ int main(int argc, char **argv)
                }
                else
                {
-                  // ... Ihre Nachrichtenverarbeitungslogik hier ...
-                  // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
                   std::string line;
-                  // Kopiere den Inhalt von info.loggedUsername nach send_.sender
                   strncpy(send_.sender, info.loggedUsername, sizeof(send_.sender) - 1);
-                  send_.sender[sizeof(send_.sender) - 1] = '\0'; // Stelle sicher, dass das Ziel-Array mit Nullterminator endet
+                  send_.sender[sizeof(send_.sender) - 1] = '\0'; // Array mit Nullterminator endet
 
                   // Erstelle einen Dateinamen für den Benutzer
                   std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
@@ -317,13 +302,15 @@ int main(int argc, char **argv)
                   std::cin.getline(send_.subject, 81);
                   std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
 
+                  send_.message.clear(); // Zuerst den Inhalt von send_.message leeren
+
                   while (std::getline(std::cin, line))
                   {
                      if (line == ".")
                      {
                         break;
                      }
-                     send_.message += line + '\n';
+                     send_.message += line;
                   }
 
                   // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
@@ -356,8 +343,6 @@ int main(int argc, char **argv)
 
                   outputFile.close();
                }
-
-               // Senden Sie "OK" als Bestätigung an den Server
                inputs.push_back(send_.sender);
                inputs.push_back(send_.receiver);
                inputs.push_back(send_.message);
@@ -372,31 +357,18 @@ int main(int argc, char **argv)
                {
                   combinedString += input + "\n";
                }
-               // 'combinedString' in einen const char* umwandeln
                strcpy(buffer, combinedString.c_str());
-               // memset(buffer, 0, sizeof(buffer[0])*BUF);
-               // size_t SendBuffer_size = strlen(buffer);
-               // send(create_socket, buffer, SendBuffer_size, 0);
             }
             if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
-            // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
             {
                inputs.push_back(std::string(clientInput_array));
-               std::cout << "LIST MESSAGES\nUsername: ";
-               std::cin.getline(send_.sender, BUF);
-               inputs.push_back(std::string(send_.sender));
+               inputs.push_back(std::string(info.loggedUsername));
                std::string combinedString;
                for (const auto &input : inputs)
                {
                   combinedString += input + "\n";
                }
-               // 'combinedString' in einen const char* umwandeln
                strcpy(buffer, combinedString.c_str());
-               // memset(buffer, 0, sizeof(buffer[0])*BUF);
-               // size_t SendBuffer_size = strlen(buffer);
-
-               // std::string listRequest = std::string(send_.sender);
-               // strncpy(buffer, listRequest.c_str(), BUF);
 
                if (send(create_socket, buffer, strlen(buffer), 0) == -1)
                {
@@ -419,8 +391,6 @@ int main(int argc, char **argv)
                else
                {
                   buffer[size] = '\0';
-                  // printf("Received list of messages:\n%s\n", buffer);
-                  // send(create_socket, "OK", 3, 0);
                }
             }
             if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0)
@@ -436,13 +406,8 @@ int main(int argc, char **argv)
                {
                   combinedString += input + "\n";
                }
-               // 'combinedString' in einen const char* umwandeln
-               strcpy(buffer, combinedString.c_str());
-               // memset(buffer, 0, sizeof(buffer[0])*BUF);
-               // size_t SendBuffer_size = strlen(buffer);
 
-               // std::string listRequest = std::string(send_.sender);
-               // strncpy(buffer, listRequest.c_str(), BUF);
+               strcpy(buffer, combinedString.c_str());
 
                if (send(create_socket, buffer, strlen(buffer), 0) == -1)
                {
@@ -465,22 +430,15 @@ int main(int argc, char **argv)
                else
                {
                   buffer[size] = '\0';
-                  // printf("Received  messages:\n%s\n", buffer);
-                  // send(create_socket, "OK", 3, 0);
                }
             }
-
 
             if (strcmp(clientInput_array, "Delete") == 0 || strcmp(clientInput_array, "delete") == 0)
             {
 
                inputs.push_back(std::string(clientInput_array));
                inputs.push_back(std::string(info.loggedUsername));
-               //    std::cout << "Delete from user\nUsername: ";
                std::cout << "Give message number\nNumber: ";
-               //  std::cin.getline(send_.messageNum, BUF);
-               // inputs.push_back(std::string(send_.messageNum));
-
                int messageNum;
                std::cin >> messageNum;
                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -515,8 +473,6 @@ int main(int argc, char **argv)
                else
                {
                   buffer[size] = '\0';
-                  // printf("Received list of messages:\n%s\n", buffer);
-                  // send(create_socket, "OK", 3, 0);
                }
             }
          }
@@ -527,9 +483,8 @@ int main(int argc, char **argv)
 
          if (strcmp(clientInput_array, "Quit") == 0 || strcmp(clientInput_array, "quit") == 0)
          {
-            // Senden Sie den "Quit"-Befehl an den Server
+            // Senden Sie den "Quit" an den Server
             send(create_socket, buffer, size, 0);
-            // printf("testBUFFER: %s\n", buffer);
             //  Schließen Sie die Verbindung auf der Client-Seite
             if (shutdown(create_socket, SHUT_RDWR) == -1)
             {
@@ -545,8 +500,6 @@ int main(int argc, char **argv)
             break;
          }
          //////////////////////////////////////////////////////////////////////
-         // printf("BUFFER: %s\n", buffer);
-         //  printf("BUFFER: %s\n", buffer);
       }
    } while (strcmp(buffer, "quit") != 0 || !isQuit);
 
