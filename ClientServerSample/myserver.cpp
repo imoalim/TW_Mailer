@@ -309,13 +309,14 @@ enum ValidCommand
    SEND,
    LOGIN,
    READ,
-   QUIT
+   QUIT,
+   Delete
 };
 
 bool checkCommand(const std::string &command)
 {
    // Gültige Befehle als Vektor von Strings
-   std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
+   std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit", "Delete", "delete"};
 
    // Umwandlung des Eingabebefehls zu Kleinbuchstaben
    std::string lowercaseCommand = command;
@@ -726,13 +727,10 @@ void *clientCommunication(void *data)
                }
             }
 
-
-     if (command == "Delete" || command == "delete")
+if (command == "Delete" || command == "delete")
 {
-    char username[BUF];
-    int messageNumber;
-    strcpy(username, input[1].c_str()); // Benutzername aus der Eingabe übernehmen
-    messageNumber = std::stoi(input[2]); // Nachrichtennummer aus der Eingabe übernehmen
+    std::string username = input[1];
+    int messageNumber = std::stoi(input[2]);
 
     DIR *dir;
     struct dirent *entry;
@@ -747,68 +745,68 @@ void *clientCommunication(void *data)
 
     while ((entry = readdir(dir)) != NULL)
     {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+        if (entry->d_type == DT_REG && strstr(entry->d_name, username.c_str()) != NULL)
         {
             std::string filepath = "messages/" + std::string(entry->d_name);
 
-            std::vector<std::string> lines;
-            std::string line;
             std::ifstream inputFile(filepath);
-            bool deleteNextLines = false;
+            std::ofstream outputFile("tempDatei.txt");
+            std::string line;
 
-            if (inputFile.is_open()) 
+            if (inputFile.is_open())
             {
-                while (getline(inputFile, line)) 
+                while (std::getline(inputFile, line))
                 {
-                    if (line.find("Message Number: " + std::to_string(messageNumber)) != std::string::npos) 
+                    // Überprüfe, ob die Zeile die zu löschende Nachricht enthält
+                    if (line.find("Message Number: " + std::to_string(messageNumber)) == std::string::npos)
                     {
-                        deleteNextLines = true;
+                        // Füge die Zeile zur temporären Datei hinzu, wenn die Nachricht nicht gefunden wurde
+                        outputFile << line << std::endl;
+                    }
+                    else
+                    {
                         messageFound = true;
-                        continue;
-                    }
-                    if (deleteNextLines && line.find("Message Number:") != std::string::npos) 
-                    {
-                        deleteNextLines = false;
-                    }
-                    if (!deleteNextLines) 
-                    {
-                        lines.push_back(line);
                     }
                 }
                 inputFile.close();
-
-                if (messageFound)
-                {
-                    std::ofstream outputFile(filepath);
-                    if (outputFile.is_open()) 
-                    {
-                        for (const auto &outputLine : lines) 
-                        {
-                            outputFile << outputLine << "\n";
-                        }
-                        outputFile.close();
-                        send(*current_socket, "Message deleted successfully", 29, 0);
-                    }
-                    else 
-                    {
-                        std::cerr << "Failed to open file for writing: " << filepath << std::endl;
-                        send(*current_socket, "FAIL: Unable to open file for writing", 35, 0);
-                    }
-                }
-                else
-                {
-                    send(*current_socket, "FAIL: Message not found", 24, 0);
-                }
+                outputFile.close();
             }
             else
             {
                 std::cerr << "File does not exist: " << filepath << std::endl;
                 send(*current_socket, "FAIL: File does not exist", 26, 0);
             }
+
+            // Lösche die ursprüngliche Datei und benenne die temporäre Datei um
+            if (remove(filepath.c_str()) != 0)
+            {
+                std::cerr << "Fehler beim Löschen der ursprünglichen Datei." << std::endl;
+                send(*current_socket, "FAIL: Error deleting message", 29, 0);
+                return NULL;
+            }
+            if (rename("tempDatei.txt", filepath.c_str()) != 0)
+            {
+                std::cerr << "Fehler beim Umbenennen der temporären Datei." << std::endl;
+                send(*current_socket, "FAIL: Error renaming file", 24, 0);
+                return NULL;
+            }
+
+            break; // Datei gefunden, Schleife verlassen
         }
     }
     closedir(dir);
+
+    if (messageFound)
+    {
+        send(*current_socket, "OK", 3, 0);
+    }
+    else
+    {
+        std::cout << "Nachricht mit Nummer " << messageNumber << " nicht gefunden." << std::endl;
+        send(*current_socket, "FAIL: Message not found", 24, 0);
+    }
 }
+
 
   }
          if (command == "Quit" || command == "quit")
@@ -816,13 +814,12 @@ void *clientCommunication(void *data)
             // Senden Sie den "Quit"-Befehl an den Server
             printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
          }
-      }
+      } 
       else
       {
          printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
       }
-
-      if (send(*current_socket, "OK", 3, 0) == -1)
+           if (send(*current_socket, "OK", 3, 0) == -1)
       {
          if (send(*current_socket, "OK", 3, 0) == -1)
          {
@@ -830,6 +827,7 @@ void *clientCommunication(void *data)
             return NULL;
          }
       }
+     
    } while (strcmp(buffer, "q") != 0 || !abortRequested);
 
    // closes/frees the descriptor if not already

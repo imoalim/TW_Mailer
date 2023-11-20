@@ -3,7 +3,6 @@ Sender:if22b252
 Receiver: test
 Subject: test
 Message: test.
-Message Number: 2
 Sender:if22b252
 Receiver: sindi
 Subject: test

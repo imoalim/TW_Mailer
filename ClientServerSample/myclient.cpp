@@ -351,7 +351,8 @@ int main(int argc, char **argv)
                   outputFile << "Sender:" << send_.sender << '\n';
                   outputFile << "Receiver: " << send_.receiver << '\n';
                   outputFile << "Subject: " << send_.subject << '\n';
-                  outputFile << "Message: " << send_.message;
+                  outputFile << "Message:\n"
+                             << send_.message;
 
                   outputFile.close();
                }
@@ -373,63 +374,17 @@ int main(int argc, char **argv)
                }
                // 'combinedString' in einen const char* umwandeln
                strcpy(buffer, combinedString.c_str());
-               // TODO:: recv something for outPut
-               //  memset(buffer, 0, sizeof(buffer[0])*BUF);
-               //  size_t SendBuffer_size = strlen(buffer);
-               //  send(create_socket, buffer, SendBuffer_size, 0);
-            }
-            if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0)
-            {
-               char messageNumber[BUF];
-               inputs.push_back(std::string(clientInput_array));
-               inputs.push_back(std::string(info.loggedUsername));
-               std::cout << "READ MESSAGES\nWhich Messsage number: ";
-               std::cin.getline(messageNumber, BUF);
-               inputs.push_back(std::string(messageNumber));
-               std::string combinedString;
-               for (const auto &input : inputs)
-               {
-                  combinedString += input + "\n";
-               }
-               // 'combinedString' in einen const char* umwandeln
-               strcpy(buffer, combinedString.c_str());
                // memset(buffer, 0, sizeof(buffer[0])*BUF);
                // size_t SendBuffer_size = strlen(buffer);
-
-               // std::string listRequest = std::string(send_.sender);
-               // strncpy(buffer, listRequest.c_str(), BUF);
-
-               if (send(create_socket, buffer, strlen(buffer), 0) == -1)
-               {
-                  perror("send error");
-                  break;
-               }
-
-               // Receive the list of messages from the server
-               size = recv(create_socket, buffer, BUF - 1, 0);
-               if (size == -1)
-               {
-                  perror("recv error");
-                  break;
-               }
-               else if (size == 0)
-               {
-                  printf("Server closed remote socket\n");
-                  break;
-               }
-               else
-               {
-                  buffer[size] = '\0';
-                  // printf("Received  messages:\n%s\n", buffer);
-                  // send(create_socket, "OK", 3, 0);
-               }
+               // send(create_socket, buffer, SendBuffer_size, 0);
             }
-
             if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
             // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
             {
                inputs.push_back(std::string(clientInput_array));
-               inputs.push_back(std::string(info.loggedUsername));
+               std::cout << "LIST MESSAGES\nUsername: ";
+               std::cin.getline(send_.sender, BUF);
+               inputs.push_back(std::string(send_.sender));
                std::string combinedString;
                for (const auto &input : inputs)
                {
