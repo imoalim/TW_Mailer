@@ -725,7 +725,92 @@ void *clientCommunication(void *data)
                   return NULL;
                }
             }
-         }
+
+
+     if (command == "Delete" || command == "delete")
+{
+    char username[BUF];
+    int messageNumber;
+    strcpy(username, input[1].c_str()); // Benutzername aus der Eingabe übernehmen
+    messageNumber = std::stoi(input[2]); // Nachrichtennummer aus der Eingabe übernehmen
+
+    DIR *dir;
+    struct dirent *entry;
+    bool messageFound = false;
+
+    dir = opendir("messages");
+    if (dir == NULL)
+    {
+        perror("Unable to open messages directory");
+        return NULL;
+    }
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL)
+        {
+            std::string filepath = "messages/" + std::string(entry->d_name);
+
+            std::vector<std::string> lines;
+            std::string line;
+            std::ifstream inputFile(filepath);
+            bool deleteNextLines = false;
+
+            if (inputFile.is_open()) 
+            {
+                while (getline(inputFile, line)) 
+                {
+                    if (line.find("Message Number: " + std::to_string(messageNumber)) != std::string::npos) 
+                    {
+                        deleteNextLines = true;
+                        messageFound = true;
+                        continue;
+                    }
+                    if (deleteNextLines && line.find("Message Number:") != std::string::npos) 
+                    {
+                        deleteNextLines = false;
+                    }
+                    if (!deleteNextLines) 
+                    {
+                        lines.push_back(line);
+                    }
+                }
+                inputFile.close();
+
+                if (messageFound)
+                {
+                    std::ofstream outputFile(filepath);
+                    if (outputFile.is_open()) 
+                    {
+                        for (const auto &outputLine : lines) 
+                        {
+                            outputFile << outputLine << "\n";
+                        }
+                        outputFile.close();
+                        send(*current_socket, "Message deleted successfully", 29, 0);
+                    }
+                    else 
+                    {
+                        std::cerr << "Failed to open file for writing: " << filepath << std::endl;
+                        send(*current_socket, "FAIL: Unable to open file for writing", 35, 0);
+                    }
+                }
+                else
+                {
+                    send(*current_socket, "FAIL: Message not found", 24, 0);
+                }
+            }
+            else
+            {
+                std::cerr << "File does not exist: " << filepath << std::endl;
+                send(*current_socket, "FAIL: File does not exist", 26, 0);
+            }
+        }
+    }
+    closedir(dir);
+}
+
+  }
          if (command == "Quit" || command == "quit")
          {
             // Senden Sie den "Quit"-Befehl an den Server

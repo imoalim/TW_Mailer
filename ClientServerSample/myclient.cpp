@@ -12,6 +12,7 @@
 #include <vector>
 #include <sstream>
 #include <unistd.h> // Für getpass
+#include <limits>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -27,7 +28,7 @@ struct Send
    char sender[9];
    char receiver[BUF];
    char subject[81];
-   int messageNum = 0;
+   int messageNum;
    std::string message;
 };
 struct Info
@@ -467,13 +468,62 @@ int main(int argc, char **argv)
                   // send(create_socket, "OK", 3, 0);
                }
             }
+
+            if (strcmp(clientInput_array, "Delete") == 0 || strcmp(clientInput_array, "delete") == 0)
+            {
+
+               inputs.push_back(std::string(clientInput_array));
+               inputs.push_back(std::string(info.loggedUsername));
+               //    std::cout << "Delete from user\nUsername: ";
+               std::cout << "Give message number\nNumber: ";
+               //  std::cin.getline(send_.messageNum, BUF);
+               // inputs.push_back(std::string(send_.messageNum));
+
+               int messageNum;
+               std::cin >> messageNum;
+               std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+               inputs.push_back(std::to_string(messageNum));
+
+               std::string combinedString;
+               for (const auto &input : inputs)
+               {
+                  combinedString += input + "\n";
+               }
+               // 'combinedString' in einen const char* umwandeln
+               strcpy(buffer, combinedString.c_str());
+
+               if (send(create_socket, buffer, strlen(buffer), 0) == -1)
+               {
+                  perror("send error");
+                  break;
+               }
+
+               // Receive the list of messages from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size == -1)
+               {
+                  perror("recv error");
+                  break;
+               }
+               else if (size == 0)
+               {
+                  printf("Server closed remote socket\n");
+                  break;
+               }
+               else
+               {
+                  buffer[size] = '\0';
+                  // printf("Received list of messages:\n%s\n", buffer);
+                  // send(create_socket, "OK", 3, 0);
+               }
+            }
          }
          else
          {
             printf("\nPlease log in to use all commands\n");
          }
 
-         if (strcmp(buffer, "Quit") == 0 || strcmp(buffer, "quit") == 0)
+         if (strcmp(clientInput_array, "Quit") == 0 || strcmp(clientInput_array, "quit") == 0)
          {
             // Senden Sie den "Quit"-Befehl an den Server
             send(create_socket, buffer, size, 0);
