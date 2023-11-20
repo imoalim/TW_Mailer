@@ -654,7 +654,7 @@ void *clientCommunication(void *data)
                   send(*current_socket, "FAIL", 5, 0);
                }
             }
-            if (command == "List" || command == "list")
+if (command == "List" || command == "list")
             {
                char username[BUF];
                strcpy(username, input[1].c_str());

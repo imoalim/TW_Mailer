@@ -423,6 +423,53 @@ int main(int argc, char **argv)
                   // send(create_socket, "OK", 3, 0);
                }
             }
+            if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0)
+            {
+               char messageNumber[BUF];
+               inputs.push_back(std::string(clientInput_array));
+               inputs.push_back(std::string(info.loggedUsername));
+               std::cout << "READ MESSAGES\nWhich Messsage number: ";
+               std::cin.getline(messageNumber, BUF);
+               inputs.push_back(std::string(messageNumber));
+               std::string combinedString;
+               for (const auto &input : inputs)
+               {
+                  combinedString += input + "\n";
+               }
+               // 'combinedString' in einen const char* umwandeln
+               strcpy(buffer, combinedString.c_str());
+               // memset(buffer, 0, sizeof(buffer[0])*BUF);
+               // size_t SendBuffer_size = strlen(buffer);
+
+               // std::string listRequest = std::string(send_.sender);
+               // strncpy(buffer, listRequest.c_str(), BUF);
+
+               if (send(create_socket, buffer, strlen(buffer), 0) == -1)
+               {
+                  perror("send error");
+                  break;
+               }
+
+               // Receive the list of messages from the server
+               size = recv(create_socket, buffer, BUF - 1, 0);
+               if (size == -1)
+               {
+                  perror("recv error");
+                  break;
+               }
+               else if (size == 0)
+               {
+                  printf("Server closed remote socket\n");
+                  break;
+               }
+               else
+               {
+                  buffer[size] = '\0';
+                  // printf("Received  messages:\n%s\n", buffer);
+                  // send(create_socket, "OK", 3, 0);
+               }
+            }
+
 
             if (strcmp(clientInput_array, "Delete") == 0 || strcmp(clientInput_array, "delete") == 0)
             {
