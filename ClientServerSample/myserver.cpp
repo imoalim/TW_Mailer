@@ -1,3 +1,4 @@
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -5,15 +6,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <signal.h>
-#include <dirent.h>
 #include <iostream>
-#include <vector>
 #include <fstream>
+#include <sys/stat.h> // Für die Verzeichniserstellung in C++ unter Linux/Unix
+#include <vector>
 #include <sstream>
-#include <unordered_set> // Zum Überprüfen der Eindeutigkeit der Message Numbers
-#include <ldap.h>
-#include <algorithm>
+#include <unistd.h> // Für getpass
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -21,756 +19,493 @@
 #define PORT 6543
 
 ///////////////////////////////////////////////////////////////////////////////
+/*void userInput(char input[], int isQuit){
 
-int abortRequested = 0;
-int create_socket = -1;
-int new_socket = -1;
-
-///////////////////////////////////////////////////////////////////////////////
-
-void *clientCommunication(void *data);
-void signalHandler(int sig);
-
-///////////////////////////////////////////////////////////////////////////////
-
-// Funktion zum Extrahieren von Nachrichteninformationen
-struct MessageInfo
+}*/
+struct Send
 {
-   int messageNumber = 0;
-   std::string subject;
-   std::string body;
+    char sender[9];
+    char receiver[BUF];
+    char subject[81];
+    int messageNum = 0;
+    std::string message;
+};
+struct Info
+{
+    char loggedUsername[9];
+    bool loggedIn = false;
 };
 
-struct LDAPServer
+struct List
 {
-   std::string Host = "ldap.technikum.wien.at";
-   int16_t Port = 389;
-   std::string SearchBase = "dc=technikum-wien,dc=at";
-   // anonymous bind with user and pw empty
-   const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
-   const int ldapVersion = LDAP_VERSION3;
-   // read username (bash: export ldapuser=<yourUsername>)
-   char ldapBindUser[256];
-   char ldapBindPassword[256];
-   char rawLdapUser[128];
-   std::string LDAPUsername;
-   std::string LDAPPassword;
-   bool loggedIn = false;
+    Send send;
 };
 
-int ldap(const char *username, const char *password)
+int main(int argc, char **argv)
 {
-   ////////////////////////////////////////////////////////////////////////////
-   // LDAP config
-   struct LDAPServer ldapServer;
+    List list;
+    Send send_;
+    int create_socket;
+    char buffer[BUF];
+    struct sockaddr_in address;
+    int size;
+    int isQuit = 1;
+    std::string messagesDirectory = "messages";
+    std::string clientInput;
+    struct Info info;
 
-   strcpy(ldapServer.rawLdapUser, username);
-   sprintf(ldapServer.ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", ldapServer.rawLdapUser);
-   printf("user set to: %s\n", ldapServer.ldapBindUser);
+    ////////////////////////////////////////////////////////////////////////////
+    // CREATE A SOCKET
+    // https://man7.org/linux/man-pages/man2/socket.2.html
+    // https://man7.org/linux/man-pages/man7/ip.7.html
+    // https://man7.org/linux/man-pages/man7/tcp.7.html
+    // IPv4, TCP (connection oriented), IP (same as server)
+    if ((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        perror("Socket error");
+        return EXIT_FAILURE;
+    }
 
-   // read password (bash: export ldappw=<yourPW>)
+    ////////////////////////////////////////////////////////////////////////////
+    // INIT ADDRESS
+    // Attention: network byte order => big endian
+    memset(&address, 0, sizeof(address)); // init storage with 0
+    address.sin_family = AF_INET;         // IPv4
+    // https://man7.org/linux/man-pages/man3/htons.3.html
+    address.sin_port = htons(PORT);
+    // https://man7.org/linux/man-pages/man3/inet_aton.3.html
+    if (argc < 2)
+    {
+        inet_aton("127.0.0.1", &address.sin_addr);
+    }
+    else
+    {
+        inet_aton(argv[1], &address.sin_addr);
+    }
 
-   strcpy(ldapServer.ldapBindPassword, password);
+    ////////////////////////////////////////////////////////////////////////////
+    // CREATE A CONNECTION
+    // https://man7.org/linux/man-pages/man2/connect.2.html
+    if (connect(create_socket,
+                (struct sockaddr *)&address,
+                sizeof(address)) == -1)
+    {
+        // https://man7.org/linux/man-pages/man3/perror.3.html
+        perror("Connect error - no server available");
+        return EXIT_FAILURE;
+    }
 
-   // search settings
-   // const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
-   // const char *ldapSearchFilter = "(uid=if19b00*)";
-   // ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
-   // const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
+    // ignore return value of printf
+    printf("Connection with server (%s) established\n",
+           inet_ntoa(address.sin_addr));
 
-   // general
-   int rc = 0; // return code
+    ////////////////////////////////////////////////////////////////////////////
+    // RECEIVE DATA
+    // https://man7.org/linux/man-pages/man2/recv.2.html
+    size = recv(create_socket, buffer, BUF - 1, 0);
+    if (size == -1)
+    {
+        perror("recv error");
+    }
+    else if (size == 0)
+    {
+        printf("Server closed remote socket\n"); // ignore error
+    }
+    else
+    {
+        buffer[size] = '\0';
+        printf("%s", buffer); // ignore error
+    }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // setup LDAP connection
-   // https://linux.die.net/man/3/ldap_initialize
-   LDAP *ldapHandle;
-   rc = ldap_initialize(&ldapHandle, ldapServer.ldapUri);
-   if (rc != LDAP_SUCCESS)
-   {
-      fprintf(stderr, "ldap_init failed\n");
-      return EXIT_FAILURE;
-   }
-   printf("connected to LDAP server %s\n", ldapServer.ldapUri);
+    do
+    {
+        // SEND DATA
+        // https://man7.org/linux/man-pages/man2/send.2.html
+        // send will fail if connection is closed, but does not set
+        // the error of send, but still the count of bytes sent
+        if ((send(create_socket, buffer, size, 0)) == -1)
+        {
+            // in case the server is gone offline we will still not enter
+            // this part of code: see docs: https://linux.die.net/man/3/send
+            // >> Successful completion of a call to send() does not guarantee
+            // >> delivery of the message. A return value of -1 indicates only
+            // >> locally-detected errors.
+            // ... but
+            // to check the connection before send is sense-less because
+            // after checking the communication can fail (so we would need
+            // to have 1 atomic operation to check...)
+            perror("send error");
+            break;
+        }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // set verison options
-   // https://linux.die.net/man/3/ldap_set_option
-   rc = ldap_set_option(
-       ldapHandle,
-       LDAP_OPT_PROTOCOL_VERSION, // OPTION
-       &ldapServer.ldapVersion);  // IN-Value
-   if (rc != LDAP_OPT_SUCCESS)
-   {
-      // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
-      fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
-      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // start connection secure (initialize TLS)
-   rc = ldap_start_tls_s(
-       ldapHandle,
-       NULL,
-       NULL);
-   if (rc != LDAP_SUCCESS)
-   {
-      fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
-      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // bind credentials
-
-   BerValue bindCredentials;
-   bindCredentials.bv_val = (char *)ldapServer.ldapBindPassword;
-   bindCredentials.bv_len = strlen(ldapServer.ldapBindPassword);
-   BerValue *servercredp; // server's credentials
-   rc = ldap_sasl_bind_s(
-       ldapHandle,
-       ldapServer.ldapBindUser,
-       LDAP_SASL_SIMPLE,
-       &bindCredentials,
-       NULL,
-       NULL,
-       &servercredp);
-   if (rc == LDAP_SUCCESS)
-   {
-      // Erfolgreich eingeloggt
-      printf("LDAP bind successful\n");
-      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-      return true;
-   }
-   else
-   {
-      // Fehlgeschlagenes Einloggen
-      fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
-      ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-      return false;
-   }
-}
-
-// Funktion zum Extrahieren von Nachrichteninformationen
-std::vector<MessageInfo> extractMessageInfo(const std::string &filepath)
-{
-   std::ifstream file(filepath);
-   std::vector<MessageInfo> messages;
-
-   if (file.is_open())
-   {
-      std::string line;
-
-      MessageInfo currentMessage;
-
-      bool isReadingMessage = false;
-
-      // Um die Eindeutigkeit der Message Numbers sicherzustellen
-
-      while (std::getline(file, line))
-      {
-         if (line.find("Message Number:") != std::string::npos)
-         {
-            if (isReadingMessage)
+        //////////////////////////////////////////////////////////////////////
+        // RECEIVE FEEDBACK
+        // consider: reconnect handling might be appropriate in somes cases
+        //           How can we determine that the command sent was received
+        //           or not?
+        //           - Resend, might change state too often.
+        //           - Else a command might have been lost.
+        //
+        // solution 1: adding meta-data (unique command id) and check on the
+        //             server if already processed.
+        // solution 2: add an infrastructure component for messaging (broker)
+        //
+        size = recv(create_socket, buffer, BUF - 1, 0);
+        if (size == -1)
+        {
+            perror("recv error");
+            break;
+        }
+        else if (size == 0)
+        {
+            printf("Server closed remote socket\n"); // ignore error
+            break;
+        }
+        else
+        {
+            buffer[size] = '\0';
+            printf("<< %s\n", buffer); // ignore error
+            if (strcmp("OK", buffer) != 0)
             {
-               messages.push_back(currentMessage);
-               currentMessage = MessageInfo();
+                fprintf(stderr, "<< Server error occured, abort\n");
+                break;
+            }
+        }
+        // TODO::input anpassen, falls flasch user auffprden ricjtig zu machen
+        printf("SEND, LIST, READ, DELETE is only for authenticated users\n>>If you want to SEND a message, type 'Send'\n");
+        printf(">> If you want to LOG IN type 'Login'\n");
+        printf(">> If you want to LIST all received messages of a specific user from his inbox, type 'List'\n");
+        printf(">> If you want to READ a specific message of a specific user, type 'Read'\n");
+        printf(">> If you want to remove a specific message, type 'Delete'\n");
+        printf(">> If you want to logout the client, type 'Quit'\n");
+        char clientInput_array[BUF]; // MAX_SIZE entsprechend der maximal erwarteten Größe setzen
+        clientInput_array[0] = '\0'; // Initialisiere mit einem leeren String
+        std::vector<std::string> inputs;
+
+        // buffer auf null setzten und clientInputarray
+        //  Um das Array zu leeren
+        memset(clientInput_array, 0, sizeof(clientInput_array[0]) * BUF);
+        memset(buffer, 0, sizeof(buffer[0]) * BUF);
+
+        if (fgets(clientInput_array, BUF, stdin) != NULL)
+        {
+            int size = strlen(clientInput_array);
+
+            // Entfernen Sie Zeilenumbruchzeichen ('\n' oder '\r\n') am Ende der Benutzereingabe
+            if (size >= 2 && (clientInput_array[size - 1] == '\n' || clientInput_array[size - 1] == '\r'))
+            {
+                clientInput_array[size - 1] = '\0'; // Setzen Sie das Zeichen am Ende auf Nullterminator
             }
 
-            std::istringstream(line.substr(line.find(":") + 1)) >> currentMessage.messageNumber;
-            isReadingMessage = true;
-            // currentMessage.body += line + '\n';
-         }
-         else if (isReadingMessage)
-         {
-
-            // currentMessage.body += line + '\n';
-
-            if (line.find("Subject:") != std::string::npos)
+            if (strcmp(clientInput_array, "Login") == 0 || strcmp(clientInput_array, "login") == 0)
             {
-               // Extract the subject
-               currentMessage.subject = line.substr(line.find(":") + 2);
+                inputs.push_back(std::string(clientInput_array));
+                char LDAPUsername[9];
+                char *LDAPPassword;
+
+                std::cout << "LogIn\nEnterUsername (max 8 characters): ";
+                std::cin >> LDAPUsername;
+                inputs.push_back(LDAPUsername);
+
+                LDAPPassword = getpass("Enter password: ");
+                inputs.push_back(LDAPPassword);
+
+                std::string combinedString;
+                for (const auto &input : inputs)
+                {
+                    combinedString += input + "\n";
+                }
+                // 'combinedString' in einen const char* umwandeln
+                size = strlen(buffer);
+                strcpy(buffer, combinedString.c_str());
+                if ((send(create_socket, buffer, strlen(buffer), 0)) == -1)
+                {
+                    perror("send error");
+                    break;
+                }
+                // Bestätigung vom Server empfangen
+                char serverResponse[BUF];
+                recv(create_socket, serverResponse, sizeof(serverResponse), 0);
+
+                // Beispiel: Annahme, dass '\n' das Trennzeichen ist
+                char *token = strtok(serverResponse, "\0");
+
+                // Array, um die aufgeteilten Teile zu speichern
+                std::vector<std::string> responseParts;
+
+                // Durchlaufe alle Teile
+                while (token != nullptr)
+                {
+                    // Füge das aktuelle Teil zum Array hinzu
+                    responseParts.push_back(token);
+                    // Hole das nächste Teil
+                    token = strtok(nullptr, "\0");
+                }
+
+                // Nun kannst du auf die Teile zugreifen, z.B.:
+                if (responseParts.size() > 0)
+                {
+                    std::cout << "Erstes Teil: " << responseParts[0] << std::endl;
+                    send(create_socket, "OK", 3, 0);
+
+                    // std::cout << "Zweiter Teil: " << responseParts[1] << std::endl;
+                }
+
+                // Überprüfe die Bestätigung vom Server
+                if (responseParts[0] == "loggedIn")
+                {
+                    info.loggedIn = true;
+
+                    // Benutzernamen vom Server empfangen und speichern
+
+                    recv(create_socket, info.loggedUsername, sizeof(info.loggedUsername), 0);
+
+                    std::cout << "Erfolgreich eingeloggt als: " << info.loggedUsername << std::endl;
+                }
+                else
+                {
+                    std::cerr << "Fehler beim Einloggen." << std::endl;
+                    continue;
+                }
+
+                //(gdb) p buffe
+                //$8 = "Login\nif22b252\nYusra2010\n", '\000' <repeats 998 times>
+                // memset(buffer, 0, sizeof(buffer[0])*BUF);
             }
 
-            else if (!line.empty())
-            {
-               currentMessage.body += line + '\n';
+            std::ofstream outputFile;
+            if (info.loggedIn) {
+                if (strcmp(clientInput_array, "Send") == 0 || strcmp(clientInput_array, "send") == 0) {
+
+                    inputs.push_back(std::string(clientInput_array));
+
+                    // Überprüfen und Öffnen der Ausgabedatei
+                    struct stat st;
+                    if (stat(messagesDirectory.c_str(), &st) != 0) {
+                        mkdir(messagesDirectory.c_str(), 0777);
+                    }
+                    std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+                    outputFile.open(userFilename, std::ios::app);
+
+                    if (!outputFile) {
+                        std::cerr << "Fehler beim Öffnen der Ausgabedatei." << std::endl;
+                    } else {
+                        // ... Ihre Nachrichtenverarbeitungslogik hier ...
+                        // Stellen Sie sicher, dass Sie outputFile schließen, wenn Sie fertig sind.
+                        std::string line;
+                        // Kopiere den Inhalt von info.loggedUsername nach send_.sender
+                        strncpy(send_.sender, info.loggedUsername, sizeof(send_.sender) - 1);
+                        send_.sender[sizeof(send_.sender) -
+                                     1] = '\0'; // Stelle sicher, dass das Ziel-Array mit Nullterminator endet
+
+                        // Erstelle einen Dateinamen für den Benutzer
+                        std::string userFilename = messagesDirectory + "/" + send_.sender + "_messages.txt";
+
+                        std::ofstream outputFile(userFilename,
+                                                 std::ios::app); // Öffne die Datei für die Ausgabe im Anhänge-Modus
+
+                        std::cout << "SEND\n"
+                                  << ">> Sender: " << send_.sender;
+                        std::cout << "\n>>Receiver: ";
+                        std::cin.getline(send_.receiver, BUF);
+                        std::cout << ">>Subject: ";
+                        std::cin.getline(send_.subject, 81);
+                        std::cout << ">>Message (Mehrzeilig eingeben und mit '.' beenden):\n";
+
+                        while (std::getline(std::cin, line)) {
+                            if (line == ".") {
+                                break;
+                            }
+                            send_.message += line + '\n';
+                        }
+
+                        // Erhöhe die Nachrichtennummer und schreibe sie in die Datei
+                        int lastMessageNum = 0;
+                        std::ifstream inputFile(userFilename);
+                        if (inputFile.is_open()) {
+                            std::string line;
+                            while (std::getline(inputFile, line)) {
+                                std::istringstream iss(line);
+                                std::string token;
+                                if (iss >> token && token == "Message" && iss >> token && token == "Number:") {
+                                    iss >> lastMessageNum;
+                                }
+                            }
+                            inputFile.close();
+                        }
+
+                        send_.messageNum = lastMessageNum + 1;
+
+                        // Schreibe die Benutzereingaben in die Datei
+                        outputFile << "Message Number: " << send_.messageNum << '\n';
+                        outputFile << "Sender:" << send_.sender << '\n';
+                        outputFile << "Receiver: " << send_.receiver << '\n';
+                        outputFile << "Subject: " << send_.subject << '\n';
+                        outputFile << "Message:\n"
+                                   << send_.message;
+
+                        outputFile.close();
+                    }
+
+                    // Senden Sie "OK" als Bestätigung an den Server
+                    inputs.push_back(send_.sender);
+                    inputs.push_back(send_.receiver);
+                    inputs.push_back(send_.message);
+                    inputs.push_back(send_.subject);
+                    inputs.push_back(std::to_string(send_.messageNum));
+
+                    memset(buffer, 0, sizeof(buffer[0]) * BUF);
+                    // Elemente des Vektors in den Buffer kopieren
+                    // Einen einzelnen std::string erstellen, in dem die Elemente mit \n getrennt sind
+                    std::string combinedString;
+                    for (const auto &input: inputs) {
+                        combinedString += input + "\n";
+                    }
+                    // 'combinedString' in einen const char* umwandeln
+                    strcpy(buffer, combinedString.c_str());
+                    // memset(buffer, 0, sizeof(buffer[0])*BUF);
+                    // size_t SendBuffer_size = strlen(buffer);
+                    // send(create_socket, buffer, SendBuffer_size, 0);
+                }
+                if (strcmp(clientInput_array, "List") == 0 || strcmp(clientInput_array, "list") == 0)
+                    // TODO:: falsche eingaben verweigeinere. Sonst kann es zu SigFault kommen
+                {
+                    inputs.push_back(std::string(clientInput_array));
+                    std::cout << "LIST MESSAGES\nUsername: ";
+                    std::cin.getline(send_.sender, BUF);
+                    inputs.push_back(std::string(send_.sender));
+                    std::string combinedString;
+                    for (const auto &input: inputs) {
+                        combinedString += input + "\n";
+                    }
+                    // 'combinedString' in einen const char* umwandeln
+                    strcpy(buffer, combinedString.c_str());
+                    // memset(buffer, 0, sizeof(buffer[0])*BUF);
+                    // size_t SendBuffer_size = strlen(buffer);
+
+                    // std::string listRequest = std::string(send_.sender);
+                    // strncpy(buffer, listRequest.c_str(), BUF);
+
+                    if (send(create_socket, buffer, strlen(buffer), 0) == -1) {
+                        perror("send error");
+                        break;
+                    }
+
+                
+                    size = recv(create_socket, buffer, BUF - 1, 0);
+                    if (size == -1) {
+                        perror("recv error");
+                        break;
+                    } else if (size == 0) {
+                        printf("Server closed remote socket\n");
+                        break;
+                    } else {
+                        buffer[size] = '\0';
+                        // printf("Received list of messages:\n%s\n", buffer);
+                        // send(create_socket, "OK", 3, 0);
+                    }
+                }
+
+             
+                if (strcmp(clientInput_array, "Read") == 0 || strcmp(clientInput_array, "read") == 0) {
+                    std::string username;
+                    int messageNumber;
+
+                    std::cout << "Enter username: ";
+                    std::getline(std::cin, username);
+
+                    std::cout << "Enter message number to read: ";
+                    std::cin >> messageNumber;
+                    std::cin.ignore(); 
+
+           
+                    std::string readCommand = "READ\n" + username + "\n" + std::to_string(messageNumber) + "\n";
+                    strcpy(buffer, readCommand.c_str());
+                    send(create_socket, buffer, strlen(buffer), 0);
+
+                 
+                    size = recv(create_socket, buffer, BUF - 1, 0);
+                    if (size > 0) {
+                        buffer[size] = '\0';
+                        // std::cout << "Received message:\n" << buffer << std::endl;
+                    } else if (size == 0) {
+                        std::cout << "Server closed the connection.\n";
+                    } else {
+                        perror("recv error");
+                    }
+                }
+
+
+                if (strcmp(clientInput_array, "Delete") == 0 || strcmp(clientInput_array, "delete") == 0) {
+                    std::string username;
+                    int messageNumber;
+
+                    std::cout << "Enter username: ";
+                    std::getline(std::cin, username);
+
+                    std::cout << "Enter message number to delete: ";
+                    std::cin >> messageNumber;
+                    std::cin.ignore(); 
+
+                 
+                    std::string deleteCommand = "DEL\n" + username + "\n" + std::to_string(messageNumber) + "\n";
+                    strcpy(buffer, deleteCommand.c_str());
+                    send(create_socket, buffer, strlen(buffer), 0);
+
+                 
+                    size = recv(create_socket, buffer, BUF - 1, 0);
+                    if (size > 0) {
+                        buffer[size] = '\0';
+                        if (strcmp(buffer, "OK\n") == 0) {
+                            std::cout << "Message deleted successfully for user " << username << "." << std::endl;
+                        } else {
+                            std::cout << "Error deleting message for user " << username << "." << std::endl;
+                        }
+                    }
+                }
+            }else{
+               printf("log in to use all commands\n");
             }
-         }
-      }
-      if (isReadingMessage)
-      {
-         // Don't forget to add the last message
-         messages.push_back(currentMessage);
-      }
 
-      file.close();
-   }
-   else
-   {
-      std::cerr << "Unable to open file: " << filepath << std::endl;
-   }
-
-   return messages;
-}
-
-// Funktion zum Extrahieren von Nachrichten
-std::string extractMessages(const std::string &username)
-{
-   DIR *dir;
-   struct dirent *entry;
-   std::stringstream allMessages;
-   int totalMessages = 0;
-   std::vector<std::string> allSubjects;
-
-   dir = opendir("messages");
-   if (dir == NULL)
-   {
-      perror("Unable to open messages directory");
-      return "";
-   }
-
-   // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
-   while ((entry = readdir(dir)) != NULL)
-   {
-      if (entry->d_type == DT_REG && strstr(entry->d_name, username.c_str()) != NULL)
-      {
-         std::string filepath = "messages/" + std::string(entry->d_name);
-         std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
-
-         for (const auto &info : messageInfo)
-         {
-            totalMessages++;
-            allSubjects.push_back(info.subject);
-         }
-      }
-   }
-   closedir(dir);
-
-   // Erstellen der Antwort im gewünschten Format
-   allMessages << totalMessages << "\n";
-   for (const auto &subject : allSubjects)
-   {
-      allMessages << subject << "\n";
-   }
-
-   return allMessages.str();
-}
-
-struct InputSplitter
-{
-   static std::vector<std::string> split(const char *buffer, int size, char delimiter)
-   {
-      std::vector<std::string> result;
-      std::string current;
-
-      for (int i = 0; i < size; i++)
-      {
-         if (buffer[i] != delimiter)
-         {
-            current += buffer[i];
-         }
-         else
-         {
-            result.push_back(current);
-            current = "";
-         }
-      }
-
-      // Überprüfen, ob 'current' noch Daten enthält, und sie zum Vektor hinzufügen
-      if (!current.empty())
-      {
-         result.push_back(current);
-      }
-
-      return result;
-   }
-};
-
-enum ValidCommand
-{
-   LIST,
-   SEND,
-   LOGIN,
-   READ,
-   QUIT
-};
-
-bool checkCommand(const std::string &command)
-{
-   // Gültige Befehle als Vektor von Strings
-   std::vector<std::string> validCommands = {"List", "list", "Send", "send", "Login", "login", "Read", "read", "Quit", "quit"};
-
-   // Umwandlung des Eingabebefehls zu Kleinbuchstaben
-   std::string lowercaseCommand = command;
-   std::transform(lowercaseCommand.begin(), lowercaseCommand.end(), lowercaseCommand.begin(), ::tolower);
-
-   // Überprüfung, ob der Befehl in den gültigen Befehlen enthalten ist
-   return std::find(validCommands.begin(), validCommands.end(), lowercaseCommand) != validCommands.end();
-}
-
-int main(void)
-{
-   socklen_t addrlen;
-   struct sockaddr_in address, cliaddress;
-   int reuseValue = 1;
-
-   ////////////////////////////////////////////////////////////////////////////
-   // SIGNAL HANDLER
-   // SIGINT (Interrup: ctrl+c)
-   // https://man7.org/linux/man-pages/man2/signal.2.html
-   if (signal(SIGINT, signalHandler) == SIG_ERR)
-   {
-      perror("signal can not be registered");
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // CREATE A SOCKET
-   // https://man7.org/linux/man-pages/man2/socket.2.html
-   // https://man7.org/linux/man-pages/man7/ip.7.html
-   // https://man7.org/linux/man-pages/man7/tcp.7.html
-   // IPv4, TCP (connection oriented), IP (same as client)
-   if ((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-   {
-      perror("Socket error"); // errno set by socket()
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // SET SOCKET OPTIONS
-   // https://man7.org/linux/man-pages/man2/setsockopt.2.html
-   // https://man7.org/linux/man-pages/man7/socket.7.html
-   // socket, level, optname, optvalue, optlen
-   if (setsockopt(create_socket,
-                  SOL_SOCKET,
-                  SO_REUSEADDR,
-                  &reuseValue,
-                  sizeof(reuseValue)) == -1)
-   {
-      perror("set socket options - reuseAddr");
-      return EXIT_FAILURE;
-   }
-
-   if (setsockopt(create_socket,
-                  SOL_SOCKET,
-                  SO_REUSEPORT,
-                  &reuseValue,
-                  sizeof(reuseValue)) == -1)
-   {
-      perror("set socket options - reusePort");
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // INIT ADDRESS
-   // Attention: network byte order => big endian
-   memset(&address, 0, sizeof(address));
-   address.sin_family = AF_INET;
-   address.sin_addr.s_addr = INADDR_ANY;
-   address.sin_port = htons(PORT);
-
-   ////////////////////////////////////////////////////////////////////////////
-   // ASSIGN AN ADDRESS WITH PORT TO SOCKET
-   if (bind(create_socket, (struct sockaddr *)&address, sizeof(address)) == -1)
-   {
-      perror("bind error");
-      return EXIT_FAILURE;
-   }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // ALLOW CONNECTION ESTABLISHING
-   // Socket, Backlog (= count of waiting connections allowed)
-   if (listen(create_socket, 5) == -1)
-   {
-      perror("listen error");
-      return EXIT_FAILURE;
-   }
-
-   while (!abortRequested)
-   {
-      /////////////////////////////////////////////////////////////////////////
-      // ignore errors here... because only information message
-      // https://linux.die.net/man/3/printf
-      printf("Waiting for connections...\n");
-
-      /////////////////////////////////////////////////////////////////////////
-      // ACCEPTS CONNECTION SETUP
-      // blocking, might have an accept-error on ctrl+c
-      addrlen = sizeof(struct sockaddr_in);
-      if ((new_socket = accept(create_socket,
-                               (struct sockaddr *)&cliaddress,
-                               &addrlen)) == -1)
-      {
-         if (abortRequested)
-         {
-            perror("accept error after aborted");
-         }
-         else
-         {
-            perror("accept error");
-         }
-         break;
-      }
-
-      /////////////////////////////////////////////////////////////////////////
-      // START CLIENT
-      // ignore printf error handling
-      printf("Client connected from %s:%d...\n",
-             inet_ntoa(cliaddress.sin_addr),
-             ntohs(cliaddress.sin_port));
-      clientCommunication(&new_socket); // returnValue can be ignored
-      new_socket = -1;
-   }
-
-   // frees the descriptor
-   if (create_socket != -1)
-   {
-      if (shutdown(create_socket, SHUT_RDWR) == -1)
-      {
-         perror("shutdown create_socket");
-      }
-      if (close(create_socket) == -1)
-      {
-         perror("close create_socket");
-      }
-      create_socket = -1;
-   }
-
-   return EXIT_SUCCESS;
-}
-
-void *clientCommunication(void *data)
-{
-   char buffer[BUF];
-   int size;
-   int *current_socket = (int *)data;
-   struct LDAPServer ldapServer;
-
-   ////////////////////////////////////////////////////////////////////////////
-   // SEND welcome message
-   strcpy(buffer, "Welcome to myserver!\r\nPlease enter your commands...\r\n");
-   if (send(*current_socket, buffer, strlen(buffer), 0) == -1)
-   {
-      perror("send failed");
-      return NULL;
-   }
-
-   do {
-       /////////////////////////////////////////////////////////////////////////
-       // RECEIVE
-
-       // printf("BUFFERonServer: %s\n", buffer);
-       memset(buffer, 0, sizeof(buffer)); // Setzen Sie den gesamten Puffer auf Null
-       size = recv(*current_socket, buffer, BUF - 1, 0);
-
-       // printf("SIZE: %d\n", size);
-       if (size == -1) {
-           if (abortRequested) {
-               perror("recv error after aborted");
-           } else {
-               perror("recv error");
-           }
-           break;
-       }
-       if (size == 0) {
-           printf("Client closed remote socket\n"); // ignore error
-           break;
-       }
-
-       // remove ugly debug message, because of the sent newline of client
-       if (buffer[size - 2] == '\r' && buffer[size - 1] == '\n') {
-           size -= 2;
-       } else if (buffer[size - 1] == '\n') {
-           --size;
-       }
-
-       buffer[size] = '\0';
-
-       // bearbeite den Input
-       std::vector<std::string> input = InputSplitter::split(buffer, size, '\n');
-
-       std::string command = input[0];
-
-       bool loggedIn = false;
-
-       if (checkCommand(command)) {
-
-           if (command == "Login" || command == "login") {
-               ldapServer.LDAPUsername = input[1].substr(0, 9);   // Begrenzt auf die ersten 9 Zeichen
-               ldapServer.LDAPPassword = input[2].substr(0, BUF); // Begrenzt auf die ersten BUF Zeichen
-               if (ldap(ldapServer.LDAPUsername.c_str(), ldapServer.LDAPPassword.c_str())) {
-                   send(*current_socket, "loggedIn", 9, 0);
-
-                   // Warte auf die Bestätigung, dass der Benutzer eingeloggt ist
-                   char serverResponse[BUF];
-                   recv(*current_socket, serverResponse, sizeof(serverResponse), 0);
-
-                   if (strcmp(serverResponse, "OK") == 0) {
-                       send(*current_socket, ldapServer.LDAPUsername.c_str(), strlen(ldapServer.LDAPUsername.c_str()),
-                            0);
-
-                       ldapServer.loggedIn = true;
-                       printf("Benutzer %s ist eingeloggt.\n", ldapServer.LDAPUsername.c_str());
-                   } else {
-                       send(*current_socket, "FAIL", 5, 0);
-                       perror("\nLDAP-Fehler");
-                   }
-               }
-           }
-           if (loggedIn) {
-               if (command == "Send" || command == "send") {
-                   printf("logedIN");
-                   // TODO:: es geht beim send befehl zweimal hinein. FIX BUG
-                   {
-                       if (send(*current_socket, "OK", 3, 0) == -1) {
-                           send(*current_socket, "FAIL", 5, 0);
-                           perror("Fehler beim Senden der Bestätigung an den Client");
-                       } else {
-                           printf("Client hat die Nachricht erfolgreich übertragen und Bestätigung gesendet\n");
-
-                           send(*current_socket, "OK", 3, 0);
-                       }
-                       // Falls ein Fehler auftritt:
-                       // send(create_socket, "FAIL", 4, 0);
-                   }
-               }
-
-               if (command == "List" || command == "list") {
-                   char username[BUF];
-                   strcpy(username, input[1].c_str());
-
-                   // Nachrichteninformationen extrahieren
-                   int totalMessages = 0;
-                   std::vector<std::string> allSubjects;
-
-                   DIR *dir;
-                   struct dirent *entry;
-
-                   dir = opendir("messages");
-                   if (dir == NULL) {
-                       perror("Unable to open messages directory");
-                       return NULL;
-                   }
-                   // TODO:: if filepath is not found send error.
-
-                   // Loop durch das Verzeichnis, um Dateien zu finden, die zum Benutzer passen
-                   while ((entry = readdir(dir)) != NULL) {
-                       if (entry->d_type == DT_REG && strstr(entry->d_name, username) != NULL) {
-                           std::string filepath = "messages/" + std::string(entry->d_name);
-
-                           // Überprüfe, ob die Datei existiert, bevor sie geöffnet wird
-                           if (access(filepath.c_str(), F_OK) != -1) {
-                               // Hier speicherst du die zurückgegebenen Informationen
-                               std::vector<MessageInfo> messageInfo = extractMessageInfo(filepath);
-
-                               int messageCount = messageInfo.size();
-                               std::vector<std::string> subjects;
-
-                               // Hier fügst du die Betreffzeilen zur allSubjects hinzu
-                               for (const auto &info: messageInfo) {
-                                   subjects.push_back(info.subject);
-                               }
-
-                               totalMessages += messageCount;
-                               allSubjects.insert(allSubjects.end(), subjects.begin(), subjects.end());
-                           } else {
-                               std::cerr << "File does not exist: " << filepath << std::endl;
-                               // Sende eine Fehlermeldung an den Client
-                               send(*current_socket, "FAIL: File does not exist", 26, 0);
-                               return NULL;
-                           }
-                       }
-                   }
-                   closedir(dir);
-
-                   // Zeige die Nachrichteninformationen auf der Serverkonsole an
-                   printf("Anzahl der Nachrichten für Benutzer %s: %d\n", username, totalMessages);
-                   printf("Betreff der Nachrichten:\n");
-
-                   for (const auto &subject: allSubjects) {
-                       printf("%s\n", subject.c_str());
-                   }
-
-                   // Sende "OK" an den Client, wenn die Nachrichteninformationen erfolgreich angezeigt wurden
-                   if (send(*current_socket, "OK", 3, 0) == -1) {
-                       perror("send OK failed");
-                       return NULL;
-                   }
-
-                   break;
-               }
-
-               if (command == "Read" || command == "read") {
-                   std::string username = input[1];
-                   int messageNumber = std::stoi(input[2]);
-                   std::string filename = "messages/" + username + "_messages.txt";
-                   std::cout << "Looking for message: " << messageNumber << " for user: " << username << std::endl;
-
-                   std::vector<MessageInfo> messages = extractMessageInfo(filename);
-                   bool messageFound = false;
-                   std::string fullMessage;
-
-                   for (const auto &message: messages) {
-                       if (message.messageNumber == messageNumber) {
-                           fullMessage = "Subject: " + message.subject + "\n" + "Message:\n" + message.body;
-                           messageFound = true;
-                           // Print the message to the server console
-                           std::cout << "Message found:\n"
-                                     << fullMessage << std::endl;
-                           break;
-                       }
-                   }
-
-                   if (messageFound) {
-                       // Send the message in chunks if it's too large
-                       size_t bytesSent = 0;
-                       while (bytesSent < fullMessage.length()) {
-                           ssize_t result = send(*current_socket,
-                                                 fullMessage.c_str() + bytesSent,
-                                                 std::min(fullMessage.length() - bytesSent,
-                                                          static_cast<size_t>(BUF - 1)),
-                                                 0);
-                           if (result == -1) {
-                               perror("send error");
-                               break;
-                           }
-                           bytesSent += result;
-                       }
-                   } else {
-                       std::string errorMsg = "ERROR: Message not found.\n";
-                       // ... [previous code]
-                       send(*current_socket, errorMsg.c_str(), errorMsg.length(), 0);
-                   }
-
-                   // Send an OK message or some acknowledgment to the client after processing
-                   const char *ackMessage = "END OF MESSAGE\n";
-                   send(*current_socket, ackMessage, strlen(ackMessage), 0);
-
-                   break;
-               }
-
-               // ... Inside the clientCommunication function ...
-
-               if (command == "Delete" || command == "delete") {
-                   std::string username = input[1]; // assuming username is also sent
-                   int messageNumberToDelete = std::stoi(input[2]);
-
-                   std::string filePath = "messages/" + username + "_messages.txt";
-                   std::ifstream inputFile(filePath);
-                   std::ofstream tempFile("messages/temp.txt");
-                   std::string line;
-                   bool isDeleted = false;
-
-                   if (inputFile.is_open() && tempFile.is_open()) {
-                       while (getline(inputFile, line)) {
-                           // Parse and check if the line contains the message number to be deleted
-                           if (line.substr(0, 16) == "Message Number: " &&
-                               std::stoi(line.substr(16)) == messageNumberToDelete) {
-                               isDeleted = true;
-                               // Skip this message
-                               while (getline(inputFile, line) && !line.empty()) {
-                                   // Skip lines until an empty line (end of message)
-                               }
-                           } else {
-                               // Write other messages to temp file
-                               tempFile << line << '\n';
-                           }
-                       }
-                       inputFile.close();
-                       tempFile.close();
-
-                       // Replace old file with new one
-                       remove(filePath.c_str());
-                       rename("messages/temp.txt", filePath.c_str());
-
-                       if (isDeleted) {
-                           send(*current_socket, "OK\n", 4, 0);
-                       } else {
-                           send(*current_socket, "ERR\n", 5, 0);
-                       }
-                   } else {
-                       send(*current_socket, "ERR\n", 5, 0);
-                   }
-
-               }
-           }
-
-           if (command == "Quit" || command == "quit") {
-               // Senden Sie den "Quit"-Befehl an den Server
-               printf("Nachricht Quit erhalten: %s\n", input[BUF].c_str());
-           }
-       } else {
-           printf("Nachricht erhalten: %s\n", buffer); // Fehler ignorieren
-       }
-
-       if (send(*current_socket, "OK", 3, 0) == -1) {
-           if (send(*current_socket, "OK", 3, 0) == -1) {
-               perror("send answer failed");
-               return NULL;
-           }
-       }
-   
-      
-   } while (strcmp(buffer, "q") != 0 || !abortRequested);
-
-   // closes/frees the descriptor if not already
-   if (*current_socket != -1)
-   {
-      if (shutdown(*current_socket, SHUT_RDWR) == -1)
-      {
-         perror("\nshutdown new_socket");
-      }
-      if (close(*current_socket) == -1)
-      {
-         perror("\nclose new_socket");
-      }
-      *current_socket = -1;
-   }
-
-   return NULL;
-}
-
-void signalHandler(int sig)
-{
-   if (sig == SIGINT)
-   {
-      printf("abort Requested... "); // ignore error
-      abortRequested = 1;
-      /////////////////////////////////////////////////////////////////////////
-      // With shutdown() one can initiate normal TCP close sequence ignoring
-      // the reference count.
-      // https://beej.us/guide/bgnet/html/#close-and-shutdownget-outta-my-face
-      // https://linux.die.net/man/3/shutdown
-      if (new_socket != -1)
-      {
-         if (shutdown(new_socket, SHUT_RDWR) == -1)
-         {
-            perror("\nshutdown new_socket");
-         }
-         if (close(new_socket) == -1)
-         {
-            perror("\nclose new_socket");
-         }
-         new_socket = -1;
-      }
-
-      if (create_socket != -1)
-      {
-         if (shutdown(create_socket, SHUT_RDWR) == -1)
-         {
-            perror("\nshutdown create_socket");
-         }
-         if (close(create_socket) == -1)
-         {
-            perror("\nclose create_socket");
-         }
-         create_socket = -1;
-      }
-   }
-   else
-   {
-      exit(sig);
-   }
-}
+                if (strcmp(buffer, "Quit") == 0 || strcmp(buffer, "quit") == 0)
+                {
+                    // Senden Sie den "Quit"-Befehl an den Server
+                    send(create_socket, buffer, size, 0);
+                    // printf("testBUFFER: %s\n", buffer);
+                    //  Schließen Sie die Verbindung auf der Client-Seite
+                    if (shutdown(create_socket, SHUT_RDWR) == -1)
+                    {
+                        perror("shutdown create_socket");
+                    }
+                    if (close(create_socket) == -1)
+                    {
+                        perror("close create_socket");
+                    }
+                    create_socket = -1;
+
+                    // Beenden Sie das Programm
+                    break;
+                }
+                //////////////////////////////////////////////////////////////////////
+                // printf("BUFFER: %s\n", buffer);
+                //  printf("BUFFER: %s\n", buffer);
+            }
+        }while (strcmp(buffer, "quit") != 0 || !isQuit);
+
+       
+        if (create_socket != -1)
+        {
+            if (shutdown(create_socket, SHUT_RDWR) == -1)
+            {
+              
+                perror("shutdown create_socket");
+            }
+            if (close(create_socket) == -1)
+            {
+                perror("close create_socket");
+            }
+            create_socket = -1;
+        }
+
+        return EXIT_SUCCESS;
+    }
